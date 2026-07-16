@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <title>Palal — Prayer Intelligence</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+ 
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <div class="enclosure" id="enclosure">
+    <div class="spectrum-layer"></div>
+
+    <!-- ─── HEADER ─── -->
+    <header class="id-bar">
+      <div class="wordmark">Palal<span class="premium-badge">Prayer Intelligence</span></div>
+      <div class="id-right">
+        <button class="tutorial-help-btn" id="helpBtn" aria-label="Help">?</button>
+        <button class="ghost" id="themeBtn" aria-label="Toggle theme">◐</button>
+        <button id="signInGoogle" style="background-color:#4285f4;color:white;border:none;padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:8px;">Sign in</button>
+        <div id="userInfo" style="display:none;align-items:center;gap:8px;margin-left:8px;">
+          <span style="font-size:11px;color:var(--ink);">Welcome, <span id="userName">Guest</span>!</span>
+          <button id="logoutBtn" style="background-color:#dc3545;color:white;border:none;padding:4px 12px;border-radius:4px;font-size:10px;cursor:pointer;">Logout</button>
+        </div>
+      </div>
+    </header>
+    <div class="header-rule"></div>
+
+    <!-- ─── MAP ─── -->
+    <div class="map-panel" id="mapPanel">
+      <div class="map-container" id="mapContainer"></div>
+      <div class="global-counter" id="globalCounter">
+        <span class="num">12,847</span> prayers rising
+      </div>
+    </div>
+
+    <!-- ─── COUNTRY TOOLTIP ─── -->
+    <div class="country-tooltip" id="countryTooltip">
+      <div class="name" id="tooltipName">Country</div>
+      <div class="stat-row"><span>Population</span><span class="val" id="tooltipPopulation">—</span></div>
+      <div class="stat-row"><span>Christian</span><span class="val" id="tooltipChristian">—</span></div>
+      <div class="divider"></div>
+      <div class="alert" id="tooltipAlert">No active alerts</div>
+      <div class="prayer-count" id="tooltipPrayerCount">0 prayers</div>
+      <div class="tap-hint">tap for full profile</div>
+    </div>
+
+    <!-- ─── COUNTRY MODAL ─── -->
+    <div class="country-modal" id="countryModal">
+      <div class="country-modal-content">
+        <button class="country-modal-close" id="countryModalClose" aria-label="Close profile">✕</button>
+        <div class="country-modal-header">
+          <div>
+            <div class="name" id="modalName">Country</div>
+            <div class="sub" id="modalSub">Loading data…</div>
+          </div>
+        </div>
+        <div class="country-modal-tabs" id="modalTabs">
+          <button class="country-modal-tab active" data-tab="overview">Overview</button>
+          <button class="country-modal-tab" data-tab="prayer">Prayer Points</button>
+          <button class="country-modal-tab" data-tab="community">Community</button>
+          <button class="country-modal-tab" data-tab="alerts">Alerts</button>
+        </div>
+        <div class="country-modal-body" id="modalBody"></div>
+        <button class="country-modal-pray-btn" id="modalPrayBtn">Pray for this country</button>
+      </div>
+    </div>
+
+    <!-- ─── CITY OVERLAY ─── -->
+    <div id="cityOverlay">
+      <button class="city-close-overlay" id="closeOverlayBtn">✕</button>
+      <div class="city-name" id="cityName">City</div>
+      <div class="city-temp" id="cityTemp">18°</div>
+      <div class="city-weather" id="cityWeather">Clear</div>
+      <div class="city-divider"></div>
+      <div class="city-headline" id="cityHeadline">"Pray for this city"</div>
+      <div class="city-meta" id="cityMeta">0 prayers · 0 intercessors</div>
+      <div class="city-home-badge" id="cityHomeBadge"></div>
+      <div class="city-pray-hint">tap to pray</div>
+    </div>
+
+    <!-- ─── PRAYER STAGE ─── -->
+    <section class="stage-axis hidden" id="stageAxis">
+      <div class="mode-arrows">
+        <button class="mode-arrow" id="prevMode" aria-label="Previous mode">◄</button>
+        <div class="mode-indicator" id="modeIndicator">
+          <span class="symbol">◈</span> petition
+        </div>
+        <button class="mode-arrow" id="nextMode" aria-label="Next mode">►</button>
+      </div>
+      <span class="nexus-hint" id="nexusHint">hold to enter</span>
+      <div class="crown-housing">
+        <button class="crown-button" id="nexusBtn" aria-label="Enter sanctuary"></button>
+        <svg class="dial-ring-svg" viewBox="0 0 148 148">
+          <circle class="ring-track" cx="74" cy="74" r="67" />
+          <circle class="ring-idle" cx="74" cy="74" r="67" />
+          <circle class="ring-progress" id="progressRing" cx="74" cy="74" r="67" />
+        </svg>
+      </div>
+      <div class="scripture-block" id="scriptureBlock">
+        <div class="scripture-verse" id="verseText">"Ask, and it will be given to you."</div>
+        <div class="scripture-cite" id="verseRef">Matthew 7:7</div>
+        <div class="city-context" id="cityContext"></div>
+      </div>
+      <div class="input-row">
+        <input type="text" class="main-input" id="mainInput" placeholder="lay it down…" maxlength="140" autocomplete="off" aria-label="Write your prayer" />
+        <span class="char-counter" id="charCounter">0/140</span>
+        <button class="submit-btn" id="submitBtn" aria-label="Submit prayer">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ─── DOCK ─── -->
+    <nav class="dock">
+      <button class="dock-btn active" id="navWorld">World</button>
+      <span class="dock-sep">·</span>
+      <button class="dock-btn" id="navPray">Pray</button>
+      <span class="dock-sep">·</span>
+      <button class="dock-btn" id="navDNA">DNA</button>
+      <span class="dock-sep">·</span>
+      <button class="dock-btn" id="navRequests">Requests</button>
+    </nav>
+
+    <!-- ─── DNA PANEL ─── -->
+    <div class="dna-panel" id="dnaPanel">
+      <div class="dna-header">
+        <div class="dna-title">Prayer DNA</div>
+        <div class="dna-identity"><span class="label" id="identityLabel">Pilgrim</span><span class="streak" id="streakLabel">· 0</span></div>
+        <button class="dna-close" id="closeDNA" aria-label="Close DNA">✕</button>
+      </div>
+      <div id="dnaContent"></div>
+      <div class="settings-link" id="settingsLink">Settings</div>
+    </div>
+
+    <!-- ─── REQUESTS PANEL ─── -->
+    <div class="requests-panel" id="requestsPanel">
+      <div class="dna-header">
+        <div class="dna-title">Prayer Requests</div>
+        <button class="dna-close" id="closeRequests" aria-label="Close requests">✕</button>
+      </div>
+      <div id="requestsContent"></div>
+    </div>
+
+    <!-- ─── SANCTUARY ─── -->
+    <div class="sanctuary-overlay" id="sanctuary">
+      <div class="sol-orb-field"><div class="sol-orb"></div></div>
+      <div class="sol-scripture">
+        <div class="sol-verse" id="solVerse">"Be still, and know that I am God."</div>
+        <div class="sol-ref" id="solRef">Psalm 46:10</div>
+        <div class="sol-city-context" id="solCityContext"></div>
+
+        <div class="sanctuary-mode-selector" id="sanctuaryModeSelector">
+          <div class="current" id="sanctuaryModeCurrent" onclick="toggleModeMenu()">
+            <span class="symbol">◈</span> Petition <span class="caret">▾</span>
+          </div>
+          <div class="sanctuary-mode-menu" id="sanctuaryModeMenu"></div>
+        </div>
+
+        <div class="confession-capsule" id="confCapsule">
+          <input class="conf-input" id="confInput" type="text" placeholder="speak it… enter to burn" autocomplete="off" aria-label="Write your confession" />
+          <div class="ash-strip" id="ashStrip"></div>
+          <div class="conf-note"><span id="confNote">0</span> burnt</div>
+        </div>
+      </div>
+
+      <div class="sol-controls">
+        <div class="sol-timer" id="solTimer">0s</div>
+        <button class="leave-btn" id="leaveBtn" aria-label="Exit sanctuary">return</button>
+      </div>
+    </div>
+
+    <!-- ─── TOAST ─── -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+   <script src="./script.js" defer></script>
+
+</body>
+</html>
