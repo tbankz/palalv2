@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
   <title>Palal — Prayer Intelligence</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
- 
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -31,6 +30,58 @@
     <!-- ─── MAP ─── -->
     <div class="map-panel" id="mapPanel">
       <div class="map-container" id="mapContainer"></div>
+
+      <!-- ─── NEWS TICKER ─── -->
+      <div class="map-ticker" id="mapTicker">
+        <div class="ticker-track" id="tickerTrack">
+          <span class="ticker-item">✦ <span class="highlight">Ukraine</span>: War escalation, 6M displaced</span>
+          <span class="ticker-item">✦ <span class="highlight">Yemen</span>: Famine risk, 18.3M in crisis</span>
+          <span class="ticker-item">✦ <span class="highlight">Sudan</span>: Civil war, 10M displaced</span>
+          <span class="ticker-item">✦ <span class="highlight">Gaza</span>: Food insecurity, 1.6M affected</span>
+        </div>
+      </div>
+
+      <!-- ─── MAP LEGEND ─── -->
+      <div id="mapLegend">
+        <button class="legend-toggle" id="legendToggle" aria-label="Toggle legend">
+          <span>✦</span> Legend
+        </button>
+        <div class="legend-content" id="legendContent">
+          <div class="legend-item">
+            <span class="legend-dot conflict"></span>
+            <span class="legend-label">Active Conflict</span>
+            <span class="legend-example">Ukraine, Sudan, Gaza</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot restricted"></span>
+            <span class="legend-label">Restricted / Persecution</span>
+            <span class="legend-example">N.Korea, Iran, China</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot monitored"></span>
+            <span class="legend-label">Monitored / Tension</span>
+            <span class="legend-example">India, Turkey, Egypt</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot disaster"></span>
+            <span class="legend-label">Natural Disaster</span>
+            <span class="legend-example">Earthquake, Flood</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot hunger"></span>
+            <span class="legend-label">Hunger / Famine</span>
+            <span class="legend-example">Yemen, S.Sudan, Somalia</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot displacement"></span>
+            <span class="legend-label">Displacement / Refugee</span>
+            <span class="legend-example">Palestine, Haiti, Venezuela</span>
+          </div>
+          <div class="legend-divider"></div>
+          <div class="legend-hint">Tap any dot to pray for that country</div>
+        </div>
+      </div>
+
       <div class="global-counter" id="globalCounter">
         <span class="num">12,847</span> prayers rising
       </div>
@@ -132,6 +183,7 @@
         <button class="dna-close" id="closeDNA" aria-label="Close DNA">✕</button>
       </div>
       <div id="dnaContent"></div>
+      <div id="dnaSpiderweb" style="margin:1rem 0; display:flex; justify-content:center; min-height:140px;"></div>
       <div class="settings-link" id="settingsLink">Settings</div>
     </div>
 
@@ -174,11 +226,83 @@
 
     <!-- ─── TOAST ─── -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <!-- ─── TUTORIAL OVERLAY ─── -->
+    <div class="tutorial-overlay" id="tutorialOverlay">
+      <div class="tutorial-step active" id="tutStep0">
+        <div class="tutorial-icon">✦</div>
+        <div class="tutorial-title">Welcome to Palal</div>
+        <div class="tutorial-body">
+          Palal is the Hebrew word for <span class="accent">prayer</span> — to intercede, to entreat, to bring before God.
+          <br><br>
+          This is your sacred space to pray, to listen, and to stand in the gap.
+        </div>
+      </div>
+
+      <div class="tutorial-step" id="tutStep1">
+        <div class="tutorial-icon">◈</div>
+        <div class="tutorial-title">Choose Your Mode</div>
+        <div class="tutorial-body">
+          Swipe left or right to choose how you come before God today.
+          <br><br>
+          <span class="accent">Petition</span> · <span class="accent">Lament</span> · <span class="accent">Thanksgiving</span>
+          <br>
+          <span class="accent">Adoration</span> · <span class="accent">Confession</span>
+          <br><br>
+          Each mode shapes the prayer and the scripture that meets you.
+        </div>
+      </div>
+
+      <div class="tutorial-step" id="tutStep2">
+        <div class="tutorial-hold-demo">
+          <div class="tutorial-hold-dot"></div>
+        </div>
+        <div class="tutorial-title">Hold to Enter</div>
+        <div class="tutorial-body">
+          Type your prayer in the field, then <span class="accent">hold the white circle</span> until it fills.
+          <br><br>
+          You'll enter the <span class="accent">Sanctuary</span> — a space of still prayer with rotating scripture.
+        </div>
+      </div>
+
+      <div class="tutorial-step" id="tutStep3">
+        <div class="tutorial-icon">◉</div>
+        <div class="tutorial-title">Map, Prayer &amp; DNA</div>
+        <div class="tutorial-body">
+          <span class="accent">Map</span> — Pray for persecuted nations, conflict zones and disaster areas
+          <br><br>
+          <span class="accent">Requests</span> — Share prayer requests with the community
+          <br><br>
+          <span class="accent">DNA</span> — Track your prayer journey and testimonies
+        </div>
+      </div>
+
+      <div class="tutorial-step" id="tutStep4">
+        <div class="tutorial-icon">✦</div>
+        <div class="tutorial-title">Your Prayer DNA</div>
+        <div class="tutorial-body">
+          Every prayer builds your <span class="accent">DNA</span> — a living portrait of your prayer life.
+          <br><br>
+          Profile shape, weekly rhythm, prayer streaks, and saved testimonies all live there.
+        </div>
+      </div>
+
+      <div class="tutorial-dots">
+        <div class="tutorial-dot active" id="tutDot0"></div>
+        <div class="tutorial-dot" id="tutDot1"></div>
+        <div class="tutorial-dot" id="tutDot2"></div>
+        <div class="tutorial-dot" id="tutDot3"></div>
+        <div class="tutorial-dot" id="tutDot4"></div>
+      </div>
+
+      <div class="tutorial-actions">
+        <button class="tutorial-skip" id="tutSkip">Skip</button>
+        <button class="tutorial-next" id="tutNext">Next →</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-   <script src="./script.js" defer></script>
-
+  <script src="./script.js"></script>
 </body>
 </html>
