@@ -16,9 +16,9 @@
     <header class="id-bar">
       <div class="wordmark">Palal<span class="premium-badge">Prayer Intelligence</span></div>
       <div class="id-right">
-        <button class="tutorial-help-btn" id="helpBtn" aria-label="Help">?</button>
-        <button class="ghost" id="themeBtn" aria-label="Toggle theme">◐</button>
-        <button id="signInGoogle" style="background-color:#4285f4;color:white;border:none;padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:8px;">Sign in</button>
+        <button class="header-btn" id="settingsLink" aria-label="Settings">⚙</button>
+        <button class="header-btn" id="themeBtn" aria-label="Toggle theme">◐</button>
+        <button id="signInGoogle">Sign in</button>
         <div id="userInfo" style="display:none;align-items:center;gap:8px;margin-left:8px;">
           <span style="font-size:11px;color:var(--ink);">Welcome, <span id="userName">Guest</span>!</span>
           <button id="logoutBtn" style="background-color:#dc3545;color:white;border:none;padding:4px 12px;border-radius:4px;font-size:10px;cursor:pointer;">Logout</button>
@@ -31,7 +31,6 @@
     <div class="map-panel" id="mapPanel">
       <div class="map-container" id="mapContainer"></div>
 
-      <!-- ─── NEWS TICKER ─── -->
       <div class="map-ticker" id="mapTicker">
         <div class="ticker-track" id="tickerTrack">
           <span class="ticker-item">✦ <span class="highlight">Ukraine</span>: War escalation, 6M displaced</span>
@@ -41,42 +40,17 @@
         </div>
       </div>
 
-      <!-- ─── MAP LEGEND ─── -->
       <div id="mapLegend">
         <button class="legend-toggle" id="legendToggle" aria-label="Toggle legend">
           <span>✦</span> Legend
         </button>
         <div class="legend-content" id="legendContent">
-          <div class="legend-item">
-            <span class="legend-dot conflict"></span>
-            <span class="legend-label">Active Conflict</span>
-            <span class="legend-example">Ukraine, Sudan, Gaza</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot restricted"></span>
-            <span class="legend-label">Restricted / Persecution</span>
-            <span class="legend-example">N.Korea, Iran, China</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot monitored"></span>
-            <span class="legend-label">Monitored / Tension</span>
-            <span class="legend-example">India, Turkey, Egypt</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot disaster"></span>
-            <span class="legend-label">Natural Disaster</span>
-            <span class="legend-example">Earthquake, Flood</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot hunger"></span>
-            <span class="legend-label">Hunger / Famine</span>
-            <span class="legend-example">Yemen, S.Sudan, Somalia</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-dot displacement"></span>
-            <span class="legend-label">Displacement / Refugee</span>
-            <span class="legend-example">Palestine, Haiti, Venezuela</span>
-          </div>
+          <div class="legend-item"><span class="legend-dot conflict"></span><span class="legend-label">Active Conflict</span></div>
+          <div class="legend-item"><span class="legend-dot restricted"></span><span class="legend-label">Restricted</span></div>
+          <div class="legend-item"><span class="legend-dot monitored"></span><span class="legend-label">Monitored</span></div>
+          <div class="legend-item"><span class="legend-dot disaster"></span><span class="legend-label">Natural Disaster</span></div>
+          <div class="legend-item"><span class="legend-dot hunger"></span><span class="legend-label">Hunger / Famine</span></div>
+          <div class="legend-item"><span class="legend-dot displacement"></span><span class="legend-label">Displacement</span></div>
           <div class="legend-divider"></div>
           <div class="legend-hint">Tap any dot to pray for that country</div>
         </div>
@@ -92,6 +66,7 @@
       <div class="name" id="tooltipName">Country</div>
       <div class="stat-row"><span>Population</span><span class="val" id="tooltipPopulation">—</span></div>
       <div class="stat-row"><span>Christian</span><span class="val" id="tooltipChristian">—</span></div>
+      <div class="stat-row"><span>Intercessors</span><span class="val" id="tooltipIntercessors">0</span></div>
       <div class="divider"></div>
       <div class="alert" id="tooltipAlert">No active alerts</div>
       <div class="prayer-count" id="tooltipPrayerCount">0 prayers</div>
@@ -107,15 +82,17 @@
             <div class="name" id="modalName">Country</div>
             <div class="sub" id="modalSub">Loading data…</div>
           </div>
+          <div class="intercessor-badge" id="modalIntercessors">0 intercessors</div>
         </div>
         <div class="country-modal-tabs" id="modalTabs">
           <button class="country-modal-tab active" data-tab="overview">Overview</button>
           <button class="country-modal-tab" data-tab="prayer">Prayer Points</button>
           <button class="country-modal-tab" data-tab="community">Community</button>
-          <button class="country-modal-tab" data-tab="alerts">Alerts</button>
+          <button class="country-modal-tab" data-tab="intercessors">Intercessors</button>
         </div>
         <div class="country-modal-body" id="modalBody"></div>
-        <button class="country-modal-pray-btn" id="modalPrayBtn">Pray for this country</button>
+        <button class="country-modal-pray-btn" id="modalPrayBtn">🙏 Pray for this country</button>
+        <button class="country-modal-pray-btn secondary" id="modalPrayWithBtn">🤝 Pray with others</button>
       </div>
     </div>
 
@@ -170,10 +147,86 @@
       <span class="dock-sep">·</span>
       <button class="dock-btn" id="navPray">Pray</button>
       <span class="dock-sep">·</span>
+      <button class="dock-btn" id="navGuided">✦ Guided</button>
+      <span class="dock-sep">·</span>
       <button class="dock-btn" id="navDNA">DNA</button>
       <span class="dock-sep">·</span>
       <button class="dock-btn" id="navRequests">Requests</button>
     </nav>
+                  <!-- ─── FOOTER ─── -->
+    <div class="app-footer">
+      <a href="https://buymeacoffee.com/palal" 
+         target="_blank" 
+         rel="noopener"
+         class="palal-text-link">
+        [SUPPORT PALAL]
+      </a>
+    </div>
+
+    <!-- ─── GUIDED PALAL PANEL ─── -->
+    <div class="guided-panel" id="guidedPanel">
+      <div class="dna-header">
+        <div class="dna-title">✦ Guided Palal</div>
+        <button class="dna-close" id="closeGuided" aria-label="Close guided prayers">✕</button>
+      </div>
+      
+      <div class="guided-content" id="guidedContent">
+        <!-- ─── PRAYER SKELETONS ─── -->
+        <div class="guided-section">
+          <h4>Prayer Skeletons</h4>
+          <p class="guided-desc">Select a prayer skeleton to guide your prayer time.</p>
+          
+          <div class="guided-grid">
+            <button class="guided-card" data-prayer="morning">
+              <span class="guided-icon">◈</span>
+              <span class="guided-name">Morning Prayer</span>
+              <span class="guided-info">8 Scriptures</span>
+              <span class="guided-action">[ Start ]</span>
+            </button>
+            
+            <button class="guided-card" data-prayer="evening">
+              <span class="guided-icon">◈</span>
+              <span class="guided-name">Evening Prayer</span>
+              <span class="guided-info">8 Scriptures</span>
+              <span class="guided-action">[ Start ]</span>
+            </button>
+            
+            <button class="guided-card" data-prayer="food">
+              <span class="guided-icon">◈</span>
+              <span class="guided-name">Prayer for Food</span>
+              <span class="guided-info">6 Scriptures</span>
+              <span class="guided-action">[ Start ]</span>
+            </button>
+            
+            <button class="guided-card" data-prayer="jabez">
+              <span class="guided-icon">◈</span>
+              <span class="guided-name">Jabez Prayer</span>
+              <span class="guided-info">4 Scriptures</span>
+              <span class="guided-action">[ Start ]</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="guided-divider"></div>
+        
+        <!-- ─── CURRENT PRAYER DISPLAY ─── -->
+        <div class="guided-section" id="guidedPrayerDisplay">
+          <h4>Current Prayer</h4>
+          
+          <div class="guided-prayer-card">
+            <div class="guided-progress" id="guidedProgress">1 / 8</div>
+            <div class="guided-verse" id="guidedVerse">"O LORD, in the morning you hear my voice; in the morning I prepare a sacrifice for you and watch."</div>
+            <div class="guided-ref" id="guidedRef">— Psalm 5:3</div>
+            
+            <div class="guided-controls">
+              <button class="guided-nav" id="guidedPrev" aria-label="Previous prayer">◄</button>
+              <button class="guided-pray-btn" id="guidedPrayBtn">Pray</button>
+              <button class="guided-nav" id="guidedNext" aria-label="Next prayer">►</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ─── DNA PANEL ─── -->
     <div class="dna-panel" id="dnaPanel">
@@ -184,7 +237,7 @@
       </div>
       <div id="dnaContent"></div>
       <div id="dnaSpiderweb" style="margin:1rem 0; display:flex; justify-content:center; min-height:140px;"></div>
-      <div class="settings-link" id="settingsLink">Settings</div>
+      <div class="settings-link" id="settingsLinkDNA">⚙ Settings</div>
     </div>
 
     <!-- ─── REQUESTS PANEL ─── -->
@@ -300,9 +353,150 @@
         <button class="tutorial-next" id="tutNext">Next →</button>
       </div>
     </div>
+
+    <!-- ═══════════════════════════════════════════════
+    SETTINGS PANEL - PRESETS ONLY
+    ═══════════════════════════════════════════════ -->
+    <div class="settings-panel" id="settingsPanel">
+      <div class="settings-header">
+        <span class="settings-title">⚙ Settings</span>
+        <button class="settings-close" id="settingsClose">✕</button>
+      </div>
+      
+      <div class="settings-content">
+        <!-- ─── QUICK PRESET PROFILES ─── -->
+        <div class="settings-section">
+          <h4>Quick Preset Profiles</h4>
+          <p class="settings-desc">Select a preset to change how God and the Messiah are referred to.</p>
+          
+          <div class="preset-grid">
+            <button class="preset-btn" data-god="Yahuah" data-messiah="Yahusha">
+              <span class="preset-icon">◈</span>
+              <span class="preset-name">Hebrew Roots</span>
+              <span class="preset-sub">Believer</span>
+              <span class="preset-names">God: Yahuah · Messiah: Yahusha</span>
+              <span class="preset-select">[ Select ]</span>
+            </button>
+            
+            <button class="preset-btn" data-god="LORD" data-messiah="Jesus">
+              <span class="preset-icon">◈</span>
+              <span class="preset-name">Traditional</span>
+              <span class="preset-sub">Christian</span>
+              <span class="preset-names">God: LORD · Messiah: Jesus</span>
+              <span class="preset-select">[ Select ]</span>
+            </button>
+            
+            <button class="preset-btn" data-god="Yahweh" data-messiah="Yeshua">
+              <span class="preset-icon">◈</span>
+              <span class="preset-name">Messianic</span>
+              <span class="preset-sub">Jewish</span>
+              <span class="preset-names">God: Yahweh · Messiah: Yeshua</span>
+              <span class="preset-select">[ Select ]</span>
+            </button>
+            
+            <button class="preset-btn" data-god="Abba" data-messiah="The Messiah">
+              <span class="preset-icon">◈</span>
+              <span class="preset-name">Intimate</span>
+              <span class="preset-sub">Prayer</span>
+              <span class="preset-names">God: Abba · Messiah: The Messiah</span>
+              <span class="preset-select">[ Select ]</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="settings-divider"></div>
+        
+               <!-- ─── ACTIONS ─── -->
+        <div class="settings-section">
+          <div class="settings-actions">
+            <button class="settings-btn" id="aboutBtn">✦ About Palal</button>
+            <button class="settings-btn" id="replayTutorialBtn">✦ Replay Tutorial</button>
+          </div>
+        </div>
+
+      </div>
+        <!-- ─── SUPPORT ─── -->
+        <div class="settings-divider"></div>
+        <div class="settings-section">
+          <div class="settings-actions">
+            <a href="https://www.buymeacoffee.com/palal" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               class="settings-btn support-btn">
+              ☕ Support Palal
+            </a>
+          </div>
+          </div>
+        </div>
+           
+    <!-- ═══════════════════════════════════════════════
+    ABOUT MODAL
+    ═══════════════════════════════════════════════ -->
+    <div class="about-modal" id="aboutModal">
+      <div class="about-modal-content">
+        <button class="about-close" id="aboutClose">✕</button>
+        
+        <div class="about-section">
+          <div class="about-title">✦ PALAL</div>
+          <div class="about-subtitle">prayer · intercession · to stand in the gap</div>
+        </div>
+        
+        <div class="about-section">
+          <p>Palal is the Hebrew word for prayer — to intercede, to entreat, to bring before God.</p>
+          <p>It appears throughout the Hebrew Scriptures, from Abraham pleading for Sodom to Daniel confessing for his people.</p>
+        </div>
+        
+        <div class="about-section">
+          <div class="about-name-preview">
+            <span class="about-label">The Messiah is referred to as:</span>
+            <span class="about-messiah-name" id="aboutMessiahName">Yeshua</span>
+            <span class="about-hebrew" id="aboutHebrew">יֵשׁוּעַ</span>
+            <span class="about-note">(Change this in Settings)</span>
+          </div>
+        </div>
+        
+        <div class="about-section">
+          <div class="about-name-preview">
+            <span class="about-label">God is referred to as:</span>
+            <span class="about-god-name" id="aboutGodName">Yahuah</span>
+            <span class="about-hebrew" id="aboutGodHebrew">יָהוּה</span>
+            <span class="about-note">(Change this in Settings)</span>
+          </div>
+        </div>
+        
+        <div class="about-section">
+          <div class="about-gospel">
+            <div class="about-gospel-title">The Story of Redemption</div>
+            <p>From Genesis to Revelation, the story is one of redemption — God's call to His people, His faithfulness, and His promise of restoration.</p>
+            <p>In the Tanakh, we see the promise of a Messiah who would bring redemption. In the New Testament, we see this promise fulfilled in <span class="about-messiah-name-dynamic">Yeshua</span>.</p>
+          </div>
+        </div>
+        
+        <div class="about-section">
+          <div class="about-values">
+            <span class="value-tag">✦ Prayer with intention</span>
+            <span class="value-tag">✦ Honesty</span>
+            <span class="value-tag">✦ Beauty</span>
+            <span class="value-tag">✦ Connection</span>
+            <span class="value-tag">✦ Stillness</span>
+          </div>
+        </div>
+        
+        <div class="about-section">
+          <div class="about-verse" id="aboutVerse">"The LORD is near to all who call on him, to all who call on him in truth."</div>
+          <div class="about-verse-ref" id="aboutVerseRef">— Psalm 145:18</div>
+        </div>
+        
+        <div class="about-section">
+          <div class="about-credit">Made with prayer · London · 2026</div>
+          <div class="about-version">Palal v2.0</div>
+        </div>
+        
+      </div>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./script.js"></script>
+  <script src=".//script.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════
    PALAL — PRAYER INTELLIGENCE
-   MINIMALIST MAP-FIRST
+   COMPLETE STYLES
    ═══════════════════════════════════════════════ */
 :root {
   --bg: #050404;
@@ -146,10 +146,60 @@ body {
 
 .id-right {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.15rem;
   align-items: center;
 }
 
+/* ─── HEADER BUTTONS ─── */
+.header-btn {
+  background: none;
+  border: none;
+  color: var(--ink-mid);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  transition: color 0.2s, transform 0.2s;
+  min-height: 32px;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 300;
+  opacity: 0.7;
+  border-radius: 4px;
+}
+
+.header-btn:hover {
+  color: var(--gold);
+  opacity: 1;
+  background: var(--gold-dim);
+}
+
+.header-btn:active {
+  transform: scale(0.9);
+}
+
+/* ─── SIGN IN BUTTON ─── */
+#signInGoogle {
+  background-color: #4285f4 !important;
+  color: white !important;
+  border: none !important;
+  padding: 4px 10px !important;
+  border-radius: 4px !important;
+  font-size: 9px !important;
+  cursor: pointer !important;
+  margin-left: 4px !important;
+  min-height: 28px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em !important;
+  transition: opacity 0.2s !important;
+}
+
+#signInGoogle:hover {
+  opacity: 0.85 !important;
+}
+
+/* ─── THEME TOGGLE ─── */
 .ghost {
   font-size: 0.5625rem;
   font-weight: 400;
@@ -168,25 +218,6 @@ body {
 }
 
 .ghost:hover, .ghost:active { color: var(--gold); }
-
-.tutorial-help-btn {
-  background: none;
-  border: none;
-  color: var(--ink-mid);
-  font-size: 0.6875rem;
-  cursor: pointer;
-  padding: 0.25rem 0.375rem;
-  transition: color 0.2s;
-  font-weight: 300;
-  letter-spacing: 0.05em;
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tutorial-help-btn:hover { color: var(--gold); }
 
 .header-rule {
   height: 0.5px;
@@ -378,8 +409,8 @@ body {
 
 .legend-item {
   display: grid;
-  grid-template-columns: 10px 1fr 1fr;
-  gap: 4px;
+  grid-template-columns: 10px 1fr;
+  gap: 6px;
   align-items: center;
   padding: 2px 0;
   font-size: 0.34375rem;
@@ -412,9 +443,7 @@ body {
 }
 
 .legend-example {
-  font-size: 0.3125rem;
-  opacity: 0.4;
-  text-align: right;
+  display: none;
 }
 
 .legend-divider {
@@ -434,7 +463,6 @@ body {
 @media (max-width: 375px) {
   #mapLegend { bottom: 90px; left: 8px; }
   .legend-content { min-width: 140px; padding: 8px 10px; }
-  .legend-item { grid-template-columns: 8px 1fr 1fr; gap: 3px; }
 }
 
 /* ─── GLOBAL COUNTER ─── */
@@ -743,6 +771,31 @@ body {
 
 .country-modal-pray-btn:hover { opacity: 0.85; }
 
+.country-modal-pray-btn.secondary {
+  background: var(--gold-dim);
+  color: var(--gold);
+  border: 0.5px solid var(--gold-line);
+  margin-top: 0.375rem;
+}
+
+.country-modal-pray-btn.secondary:hover {
+  background: var(--gold);
+  color: var(--bg);
+}
+
+/* ─── INTERCESSOR BADGE ─── */
+.intercessor-badge {
+  font-size: 0.4375rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  opacity: 0.7;
+  background: var(--gold-dim);
+  padding: 0.25rem 0.625rem;
+  border-radius: 99px;
+  border: 0.5px solid var(--gold-line);
+  font-weight: 300;
+}
+
 /* ═══════════════════════════════════════════════
    CITY OVERLAY
    ═══════════════════════════════════════════════ */
@@ -809,6 +862,7 @@ body {
   padding-bottom: calc(0.25rem + var(--safe-bottom));
   margin-top: 0.5rem;
   flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .dock-btn {
@@ -819,9 +873,9 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0.5rem 0.375rem;
+  padding: 0.5rem 0.5rem;
   min-height: 44px;
-  min-width: 44px;
+  min-width: 36px;
   display: flex;
   align-items: center;
   transition: color 0.2s;
@@ -852,7 +906,11 @@ body {
   background: var(--gold);
 }
 
-.dock-sep { font-size: 0.4375rem; color: var(--ink-faint); opacity: 0.3; }
+.dock-sep {
+  font-size: 0.4375rem;
+  color: var(--ink-faint);
+  opacity: 0.2;
+}
 
 /* ═══════════════════════════════════════════════
    PRAYER STAGE
@@ -1062,7 +1120,7 @@ body {
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--ink);
-  opacity: 0.82;
+  opacity: 1;
   font-weight: 300;
 }
 
@@ -1072,7 +1130,7 @@ body {
   text-transform: uppercase;
   color: var(--ember);
   margin-top: 0.375rem;
-  opacity: 0.5;
+  opacity: 0.8;
   font-weight: 300;
 }
 
@@ -1181,13 +1239,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2.5rem 2rem;
+  justify-content: flex-start;
+  padding: 1.5rem 1.5rem 1rem;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.7s var(--ease), visibility 0s 0.7s;
   border-radius: 44px;
   pointer-events: none;
+  overflow-y: auto;
 }
 
 .sanctuary-overlay.active {
@@ -1199,9 +1258,9 @@ body {
 
 .sol-orb-field {
   position: relative;
-  width: 11.25rem;
-  height: 11.25rem;
-  margin: 0 auto 1.25rem;
+  width: 7rem;
+  height: 7rem;
+  margin: 0 auto 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1210,8 +1269,8 @@ body {
 
 .sol-orb {
   position: absolute;
-  width: 10rem;
-  height: 10rem;
+  width: 6rem;
+  height: 6rem;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -1241,31 +1300,30 @@ body {
 .sol-verse {
   font-family: var(--serif);
   font-style: italic;
-  font-size: 0.875rem;
-  line-height: 1.8;
-  color: var(--ink);
-  transition: opacity 0.4s;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #F0EDE8;
+  opacity: 0.9;
   font-weight: 300;
-  padding: 0 0.25rem;
 }
 
 .sol-ref {
-  font-size: 0.5rem;
+  font-size: 0.4375rem;
   letter-spacing: 0.25em;
   text-transform: uppercase;
   color: var(--ember);
-  margin-top: 0.375rem;
-  opacity: 0.5;
+  margin-top: 0.25rem;
+  opacity: 0.8;
   font-weight: 300;
 }
 
 .sol-city-context {
-  font-size: 0.4375rem;
+  font-size: 0.375rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--ink-mid);
   opacity: 0.4;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   font-weight: 300;
 }
 
@@ -1273,7 +1331,7 @@ body {
 .sanctuary-mode-selector {
   position: relative;
   display: inline-block;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   text-align: center;
   cursor: pointer;
   user-select: none;
@@ -1281,7 +1339,7 @@ body {
 }
 
 .sanctuary-mode-selector .current {
-  font-size: 0.4375rem;
+  font-size: 0.375rem;
   letter-spacing: 0.25em;
   text-transform: uppercase;
   color: var(--ink-mid);
@@ -1291,10 +1349,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.25rem 0.75rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 99px;
   border: 0.5px solid transparent;
-  min-height: 32px;
+  min-height: 28px;
 }
 
 .sanctuary-mode-selector .current:hover {
@@ -1336,16 +1394,16 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3125rem 0.875rem;
+  padding: 0.2rem 0.625rem;
   border-radius: 6px;
-  font-size: 0.4375rem;
+  font-size: 0.375rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-mid);
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 300;
-  min-height: 36px;
+  min-height: 30px;
 }
 
 .sanctuary-mode-menu .item:hover { background: var(--gold-dim); color: var(--gold); }
@@ -1359,39 +1417,44 @@ body {
   display: none;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
   width: 100%;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  background: var(--gold-dim);
+  border-radius: 10px;
+  border: 0.5px solid var(--gold-line);
 }
 
 .confession-capsule.visible { display: flex; }
 
 .conf-input {
-  width: 100%;
+  width: 90%;
   background: transparent;
   border: none;
-  border-bottom: 0.5px solid rgba(240, 237, 232, 0.12);
+  border-bottom: 0.5px solid var(--gold-line);
   color: var(--ink);
   font-family: var(--serif);
   font-style: italic;
-  font-size: 0.875rem;
+  font-size: 0.625rem;
   text-align: center;
-  padding: 0.375rem;
+  padding: 0.25rem;
   outline: none;
   caret-color: var(--ember);
   font-weight: 300;
   transition: border-color 0.3s;
 }
 
-.conf-input:focus { border-bottom-color: var(--gold-str); }
+.conf-input:focus { border-bottom-color: var(--gold); }
 
 .conf-input::placeholder {
   font-family: var(--sans);
   font-style: normal;
-  font-size: 0.625rem;
+  font-size: 0.5rem;
   color: var(--ink-mid);
   text-align: center;
   font-weight: 300;
+  opacity: 0.5;
 }
 
 .ash-strip {
@@ -1401,11 +1464,13 @@ body {
   min-height: 0.5rem;
   flex-wrap: wrap;
   padding: 0.125rem 0;
+  max-height: 1.5rem;
+  overflow-y: auto;
 }
 
 .ash-mark {
-  width: 0.1875rem;
-  height: 0.4375rem;
+  width: 0.15rem;
+  height: 0.35rem;
   background: var(--gold);
   opacity: 0.3;
   border-radius: 1px;
@@ -1415,7 +1480,7 @@ body {
 .ash-mark:nth-child(even) { transform: rotate(-2deg) translateY(1px); opacity: 0.2; }
 
 .conf-note {
-  font-size: 0.5rem;
+  font-size: 0.375rem;
   letter-spacing: 0.12em;
   color: var(--ink-mid);
   opacity: 0.4;
@@ -1425,42 +1490,53 @@ body {
 
 .conf-note:hover { opacity: 0.8; }
 
+/* ─── SOL CONTROLS ─── */
 .sol-controls {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.375rem;
-  margin-top: 1rem;
-  opacity: 0;
-  animation: fadeWord 0.6s 2.2s ease forwards;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  opacity: 1;
+  animation: none;
   width: 100%;
+  position: relative;
+  z-index: 10;
 }
 
 .sol-timer {
-  font-size: 0.5625rem;
+  font-size: 0.4375rem;
   letter-spacing: 0.12em;
   font-family: monospace;
   color: var(--ink-mid);
-  opacity: 0.4;
+  opacity: 0.3;
   font-weight: 300;
 }
 
 .leave-btn {
-  background: none;
-  border: 0.5px solid rgba(240, 237, 232, 0.10);
+  font-size: 0.4375rem;
+  padding: 0.375rem 1.25rem;
+  min-height: 36px;
+  border: 0.5px solid var(--gold-line);
   color: var(--ink-mid);
-  font-size: 0.5rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  padding: 0.5rem 1.5rem;
+  background: none;
   border-radius: 99px;
   cursor: pointer;
-  min-height: 44px;
   transition: all 0.2s;
   font-weight: 300;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  margin-top: 0;
+  position: relative;
+  z-index: 11;
 }
 
-.leave-btn:hover { border-color: rgba(240, 237, 232, 0.25); color: var(--ink); }
+.leave-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: var(--gold-dim);
+}
 
 /* ═══════════════════════════════════════════════
    TOAST
@@ -1474,7 +1550,7 @@ body {
   border: 0.5px solid var(--gold-line);
   border-radius: 99px;
   padding: 0.25rem 0.75rem;
-  z-index: 1000;
+  z-index: 9999;
   font-size: 0.375rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -1601,7 +1677,7 @@ body {
   font-style: italic;
   font-size: 0.625rem;
   color: var(--ink);
-  opacity: 0.85;
+  opacity: 1;
   line-height: 1.4;
   padding-right: 1.5rem;
 }
@@ -1637,7 +1713,7 @@ body {
   margin-top: 0.125rem;
   font-size: 0.375rem;
   color: var(--ink-mid);
-  opacity: 0.5;
+  opacity: 0.8;
   flex-wrap: wrap;
 }
 
@@ -1816,6 +1892,7 @@ body {
   color: var(--ink);
   line-height: 1.4;
   font-weight: 300;
+  opacity: 1;
 }
 
 .request-item .request-meta {
@@ -1829,6 +1906,7 @@ body {
   font-weight: 300;
   flex-wrap: wrap;
   align-items: center;
+  opacity: 0.8;
 }
 
 .request-item .request-meta .count { color: var(--gold); opacity: 0.6; }
@@ -1933,6 +2011,34 @@ body {
   .crown-button { width: 6.25rem; height: 6.25rem; }
   .country-modal-content { padding: 1rem 1rem 2rem; }
   .dock-btn { font-size: 0.375rem; padding: 0.375rem 0.25rem; min-width: 36px; }
+  
+  .sanctuary-overlay {
+    padding: 1rem 1rem 0.5rem !important;
+  }
+  
+  .sol-orb-field {
+    width: 5.5rem !important;
+    height: 5.5rem !important;
+  }
+  
+  .sol-orb {
+    width: 4.5rem !important;
+    height: 4.5rem !important;
+  }
+  
+  .sol-verse {
+    font-size: 0.625rem !important;
+  }
+  
+  .conf-input {
+    font-size: 0.5rem !important;
+  }
+  
+  .leave-btn {
+    font-size: 0.375rem !important;
+    padding: 0.25rem 1rem !important;
+    min-height: 30px !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════
@@ -2131,4 +2237,876 @@ body {
   border-radius: 50%;
   background: var(--gold);
   opacity: 0.6;
+}
+
+/* ═══════════════════════════════════════════════
+   SETTINGS PANEL
+   ═══════════════════════════════════════════════ */
+.settings-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 0.5px solid var(--gold-line);
+  border-radius: 32px 32px 0 0;
+  padding: 1.5rem 1.5rem 2.5rem;
+  transform: translateY(100%);
+  transition: transform 0.5s var(--ease);
+  z-index: 10000;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.settings-panel.open {
+  transform: translateY(0);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 0.5px solid var(--gold-line);
+  padding-bottom: 0.875rem;
+  margin-bottom: 1rem;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 10;
+}
+
+.settings-title {
+  font-size: 0.5625rem;
+  font-weight: 400;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.7;
+}
+
+.settings-close {
+  background: none;
+  border: none;
+  color: var(--ink-mid);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: color 0.2s;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.settings-close:hover {
+  color: var(--gold);
+}
+
+.settings-content {
+  padding: 0 0.25rem;
+}
+
+.settings-section {
+  margin-bottom: 1.5rem;
+}
+
+.settings-section h4 {
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.6;
+  margin-bottom: 0.5rem;
+  font-weight: 400;
+}
+
+.settings-desc {
+  font-size: 0.4375rem;
+  color: var(--ink-mid);
+  opacity: 0.8;
+  margin-bottom: 0.5rem;
+  font-weight: 300;
+}
+
+.settings-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0.625rem;
+  border: 0.5px solid var(--gold-line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.4375rem;
+  color: var(--ink-mid);
+}
+
+.settings-radio:hover {
+  border-color: var(--gold-str);
+  background: var(--gold-dim);
+}
+
+.settings-radio input[type="radio"] {
+  accent-color: var(--gold);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.settings-radio:has(input:checked) {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+  color: var(--gold);
+}
+
+.settings-radio .radio-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.settings-radio .radio-name {
+  font-weight: 500;
+  font-size: 0.5rem;
+}
+
+.settings-radio .radio-hebrew {
+  font-size: 0.375rem;
+  opacity: 0.5;
+  font-family: "Times New Roman", serif;
+}
+
+.settings-radio .radio-greek {
+  font-size: 0.375rem;
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.settings-radio .radio-desc {
+  font-size: 0.375rem;
+  opacity: 0.4;
+}
+
+.settings-preview {
+  background: var(--card);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.settings-preview .preview-label {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.3;
+  display: block;
+  margin-bottom: 0.125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-preview .preview-verse {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.625rem;
+  color: var(--ink);
+  opacity: 1;
+  display: block;
+  line-height: 1.4;
+}
+
+.settings-preview .preview-ref {
+  font-size: 0.375rem;
+  color: var(--ember);
+  opacity: 0.8;
+  display: block;
+  margin-top: 0.125rem;
+  letter-spacing: 0.08em;
+}
+
+.settings-note {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.3;
+  margin-top: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border-left: 1px solid var(--gold-line);
+  font-weight: 300;
+}
+
+.settings-btn {
+  display: block;
+  width: 100%;
+  padding: 0.625rem;
+  background: var(--card);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 0.4375rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  font-weight: 300;
+  min-height: 44px;
+}
+
+.settings-btn:hover {
+  border-color: var(--gold-str);
+  background: var(--gold-dim);
+  color: var(--gold);
+}
+
+/* ═══════════════════════════════════════════════
+   ABOUT MODAL
+   ═══════════════════════════════════════════════ */
+.about-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.4s var(--ease);
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.about-modal.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.about-modal-content {
+  background: var(--surface);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 24px;
+  padding: 1.75rem;
+  max-width: 320px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  transform: scale(0.95);
+  transition: transform 0.4s var(--ease);
+}
+
+.about-modal.show .about-modal-content {
+  transform: scale(1);
+}
+
+.about-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--ink-mid);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  min-height: 44px;
+  min-width: 44px;
+  transition: color 0.2s;
+}
+
+.about-close:hover {
+  color: var(--gold);
+}
+
+.about-section {
+  margin-bottom: 1.25rem;
+}
+
+.about-title {
+  font-size: 0.875rem;
+  font-family: var(--serif);
+  color: var(--gold);
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+
+.about-subtitle {
+  font-size: 0.4375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  text-align: center;
+  margin-top: 0.125rem;
+}
+
+.about-section p {
+  font-size: 0.5rem;
+  color: var(--ink-mid);
+  line-height: 1.6;
+  font-weight: 300;
+  margin-bottom: 0.25rem;
+  opacity: 0.8;
+}
+
+.about-name-preview {
+  background: var(--card);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 12px;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.about-name-preview .about-label {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.about-name-preview .about-messiah-name {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--gold);
+  display: block;
+  font-family: var(--serif);
+}
+
+.about-name-preview .about-hebrew {
+  font-size: 0.625rem;
+  color: var(--gold);
+  opacity: 0.5;
+  font-family: "Times New Roman", serif;
+  display: block;
+  margin-top: 0.125rem;
+}
+
+.about-name-preview .about-note {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.3;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.about-gospel {
+  background: var(--gold-dim);
+  border-left: 1px solid var(--gold);
+  padding: 0.625rem 0.875rem;
+  border-radius: 8px;
+}
+
+.about-gospel-title {
+  font-size: 0.5rem;
+  font-weight: 400;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+  margin-bottom: 0.25rem;
+}
+
+.about-gospel p {
+  font-size: 0.4375rem;
+  color: var(--ink-mid);
+  line-height: 1.6;
+  font-weight: 300;
+  margin-bottom: 0.125rem;
+  opacity: 0.8;
+}
+
+.about-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.about-values .value-tag {
+  font-size: 0.4375rem;
+  color: var(--gold);
+  opacity: 0.5;
+  background: var(--gold-dim);
+  padding: 0.125rem 0.625rem;
+  border-radius: 99px;
+  border: 0.5px solid var(--gold-line);
+  font-weight: 300;
+}
+
+.about-verse {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.75rem;
+  color: var(--ink);
+  opacity: 1;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.about-verse-ref {
+  font-size: 0.375rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ember);
+  opacity: 0.8;
+  text-align: center;
+  margin-top: 0.25rem;
+}
+
+.about-credit {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.3;
+  text-align: center;
+  font-weight: 300;
+}
+
+.about-version {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.2;
+  text-align: center;
+  margin-top: 0.125rem;
+  font-weight: 300;
+}
+
+/* ─── FIX BLUE TAP HIGHLIGHT ─── */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+  tap-highlight-color: transparent !important;
+}/* ═══════════════════════════════════════════════
+   GUIDED PALAL - COMPLETE STYLES
+   ═══════════════════════════════════════════════ */
+
+.guided-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 0.5px solid var(--gold-line);
+  border-radius: 32px 32px 0 0;
+  padding: 1.5rem 1.5rem 2.5rem;
+  transform: translateY(100%);
+  transition: transform 0.5s var(--ease);
+  z-index: 303;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.guided-panel.open {
+  transform: translateY(0);
+}
+
+/* ─── GUIDED CONTENT ─── */
+.guided-content {
+  padding: 0 0.25rem;
+}
+
+.guided-section {
+  margin-bottom: 1.25rem;
+}
+
+.guided-section h4 {
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.6;
+  margin-bottom: 0.375rem;
+  font-weight: 400;
+}
+
+.guided-desc {
+  font-size: 0.4375rem;
+  color: var(--ink-mid);
+  opacity: 0.5;
+  margin-bottom: 0.75rem;
+  font-weight: 300;
+}
+
+/* ─── DIVIDER ─── */
+.guided-divider {
+  height: 0.5px;
+  background: var(--gold-line);
+  margin: 0.5rem 0 1rem;
+}
+
+/* ─── GUIDED GRID ─── */
+.guided-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.guided-card {
+  background: var(--card);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 10px;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  text-align: left;
+  min-height: 64px;
+  position: relative;
+}
+
+.guided-card:hover {
+  border-color: var(--gold-str);
+  background: var(--gold-dim);
+  transform: translateY(-1px);
+}
+
+.guided-card:active {
+  transform: scale(0.97);
+}
+
+.guided-card .guided-icon {
+  font-size: 0.5rem;
+  color: var(--gold);
+  opacity: 0.3;
+  display: block;
+  margin-bottom: 0.125rem;
+  letter-spacing: 0.1em;
+}
+
+.guided-card .guided-name {
+  font-size: 0.5rem;
+  font-weight: 500;
+  color: var(--ink);
+  display: block;
+  letter-spacing: 0.02em;
+}
+
+.guided-card .guided-info {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  display: block;
+  margin-top: 0.0625rem;
+  letter-spacing: 0.04em;
+}
+
+.guided-card .guided-action {
+  font-size: 0.375rem;
+  color: var(--gold);
+  opacity: 0.2;
+  display: block;
+  margin-top: 0.125rem;
+  letter-spacing: 0.08em;
+  transition: opacity 0.2s;
+}
+
+.guided-card:hover .guided-action {
+  opacity: 0.6;
+}
+
+.guided-card.active {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+
+.guided-card.active .guided-icon {
+  opacity: 0.8;
+}
+
+.guided-card.active .guided-action {
+  opacity: 0.8;
+  color: var(--gold);
+}
+
+/* ─── GUIDED PRAYER DISPLAY ─── */
+.guided-prayer-card {
+  background: var(--card);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.guided-progress {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.1em;
+}
+
+.guided-verse {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.75rem;
+  color: var(--ink);
+  line-height: 1.6;
+  opacity: 0.9;
+}
+
+.guided-ref {
+  font-size: 0.4375rem;
+  color: var(--ember);
+  opacity: 0.6;
+  margin-top: 0.25rem;
+  letter-spacing: 0.08em;
+}
+
+.guided-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.guided-nav {
+  background: none;
+  border: 0.5px solid var(--gold-line);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  color: var(--ink-mid);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.625rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guided-nav:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.guided-nav:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.guided-pray-btn {
+  padding: 0.375rem 1.5rem;
+  background: var(--gold);
+  color: var(--bg);
+  border: none;
+  border-radius: 99px;
+  font-size: 0.4375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  min-height: 36px;
+}
+
+.guided-pray-btn:hover {
+  opacity: 0.85;
+  transform: scale(1.02);
+}
+
+/* ─── RESPONSIVE GUIDED ─── */
+@media (max-width: 375px) {
+  .guided-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.375rem;
+  }
+  
+  .guided-card {
+    padding: 0.5rem 0.5rem;
+    min-height: 56px;
+  }
+  
+  .guided-card .guided-name {
+    font-size: 0.4375rem;
+  }
+  
+  .guided-verse {
+    font-size: 0.625rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   SETTINGS - PRESETS ONLY
+   ═══════════════════════════════════════════════ */
+
+/* ─── QUICK PRESETS ─── */
+.preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.preset-btn {
+  background: var(--card);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 10px;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  text-align: left;
+  min-height: 68px;
+  position: relative;
+}
+
+.preset-btn:hover {
+  border-color: var(--gold-str);
+  background: var(--gold-dim);
+  transform: translateY(-1px);
+}
+
+.preset-btn:active {
+  transform: scale(0.97);
+}
+
+.preset-btn .preset-icon {
+  font-size: 0.5rem;
+  color: var(--gold);
+  opacity: 0.3;
+  display: block;
+  margin-bottom: 0.125rem;
+  letter-spacing: 0.1em;
+}
+
+.preset-btn .preset-name {
+  font-size: 0.5rem;
+  font-weight: 500;
+  color: var(--ink);
+  display: block;
+  letter-spacing: 0.02em;
+}
+
+.preset-btn .preset-sub {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  display: block;
+  letter-spacing: 0.04em;
+  margin-top: -0.0625rem;
+}
+
+.preset-btn .preset-names {
+  font-size: 0.375rem;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  display: block;
+  margin-top: 0.125rem;
+  letter-spacing: 0.04em;
+}
+
+.preset-btn .preset-select {
+  font-size: 0.375rem;
+  color: var(--gold);
+  opacity: 0.2;
+  display: block;
+  margin-top: 0.125rem;
+  letter-spacing: 0.08em;
+  transition: opacity 0.2s;
+}
+
+.preset-btn:hover .preset-select {
+  opacity: 0.6;
+}
+
+.preset-btn.active {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+
+.preset-btn.active .preset-icon {
+  opacity: 0.8;
+}
+
+.preset-btn.active .preset-select {
+  opacity: 0.8;
+  color: var(--gold);
+}
+
+/* ─── SETTINGS DIVIDER ─── */
+.settings-divider {
+  height: 0.5px;
+  background: var(--gold-line);
+  margin: 0.5rem 0 1rem;
+}
+
+/* ─── SETTINGS ACTIONS ─── */
+.settings-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-actions .settings-btn {
+  text-align: center;
+}
+
+/* ─── RESPONSIVE PRESETS ─── */
+@media (max-width: 375px) {
+  .preset-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.375rem;
+  }
+  
+  .preset-btn {
+    padding: 0.5rem 0.5rem;
+    min-height: 60px;
+  }
+  
+  .preset-btn .preset-name {
+    font-size: 0.4375rem;
+  }
+  
+  .preset-btn .preset-names {
+    font-size: 0.34375rem;
+  }
+  }
+
+/* About modal support */
+.about-section .bmc-button-container iframe {
+  max-width: 180px !important;
+  height: 40px !important;
+}
+
+/* Dark theme subtle glow */
+[data-theme="dark"] .bmc-button-container iframe {
+  filter: drop-shadow(0 0 8px rgba(255, 221, 0, 0.10));
+}
+
+/* Responsive */
+@media (max-width: 375px) {
+  .bmc-button-container iframe {
+    max-width: 180px !important;
+    height: 40px !important;
+  }
+  .support-dock {
+    font-size: 0.75rem !important;
+    min-width: 28px !important;
+  }
+  }   /* ← THIS CLOSES THE MEDIA QUERY */
+/* ─── FOOTER — Clean Text Link ─── */
+
+.app-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.25rem 0 0.25rem;
+  flex-shrink: 0;
+  border-top: 0.5px solid var(--gold-line);
+  margin-top: 0.25rem;
+}
+
+.palal-text-link {
+  font-family: var(--sans);
+  font-size: 0.4375rem;        /* ← CHANGED: Now matches dock */
+  letter-spacing: 0.25em;
+  color: var(--gold);
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.3s var(--ease);
+}
+
+.palal-text-link:hover {
+  opacity: 1;
 }
