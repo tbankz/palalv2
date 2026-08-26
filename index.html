@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Palal — Prayer Intelligence</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=20260825120003" />
 </head>
 <body>
 
@@ -18,10 +18,10 @@
       <div class="id-right">
         <button class="header-btn" id="settingsLink" aria-label="Settings">⚙</button>
         <button class="header-btn" id="themeBtn" aria-label="Toggle theme">◐</button>
-        <button id="signInGoogle">Sign in</button>
-        <div id="userInfo" style="display:none;align-items:center;gap:8px;margin-left:8px;">
-          <span style="font-size:11px;color:var(--ink);">Welcome, <span id="userName">Guest</span>!</span>
-          <button id="logoutBtn" style="background-color:#dc3545;color:white;border:none;padding:4px 12px;border-radius:4px;font-size:10px;cursor:pointer;">Logout</button>
+        <button class="sign-in-btn" id="signInGoogle">Sign in</button>
+        <div class="user-info" id="userInfo">
+          <span class="user-name-label">Welcome, <span id="userName">Guest</span></span>
+          <button class="logout-btn" id="logoutBtn">Sign out</button>
         </div>
       </div>
     </header>
@@ -31,12 +31,20 @@
     <div class="map-panel" id="mapPanel">
       <div class="map-container" id="mapContainer"></div>
 
-      <div class="map-ticker" id="mapTicker">
-        <div class="ticker-track" id="tickerTrack">
-          <span class="ticker-item">✦ <span class="highlight">Ukraine</span>: War escalation, 6M displaced</span>
-          <span class="ticker-item">✦ <span class="highlight">Yemen</span>: Famine risk, 18.3M in crisis</span>
-          <span class="ticker-item">✦ <span class="highlight">Sudan</span>: Civil war, 10M displaced</span>
-          <span class="ticker-item">✦ <span class="highlight">Gaza</span>: Food insecurity, 1.6M affected</span>
+      <div class="map-hud-frame" aria-hidden="true">
+        <span class="hud-corner tl"></span>
+        <span class="hud-corner tr"></span>
+        <span class="hud-corner bl"></span>
+        <span class="hud-corner br"></span>
+      </div>
+      <div class="map-hud-status">
+        <span class="hud-dot"></span> map · live
+      </div>
+
+      <div class="incense-feed-container">
+        <div class="incense-smoke" id="mapIncenseSmoke">
+          <span class="incense-text-scroll" id="mapIncenseText">…</span>
+          <button class="join-prayer-btn" id="mapIncenseJoinBtn">Join</button>
         </div>
       </div>
 
@@ -56,8 +64,13 @@
         </div>
       </div>
 
-      <div class="global-counter" id="globalCounter">
-        <span class="num">12,847</span> prayers rising
+      <div id="regionWelcomeCard" class="region-welcome">
+        <button class="region-welcome-close" id="regionWelcomeClose" aria-label="Dismiss">✕</button>
+        <div class="region-welcome-label">You're near</div>
+        <div class="region-welcome-name" id="regionWelcomeName">—</div>
+        <div class="region-welcome-fact" id="regionWelcomeFact"></div>
+        <div class="region-welcome-stats" id="regionWelcomeStats"></div>
+        <button class="region-welcome-pray-btn" id="regionWelcomePrayBtn">Pray for this region</button>
       </div>
     </div>
 
@@ -112,11 +125,11 @@
     <!-- ─── PRAYER STAGE ─── -->
     <section class="stage-axis hidden" id="stageAxis">
       <div class="mode-arrows">
-        <button class="mode-arrow" id="prevMode" aria-label="Previous mode">◄</button>
-        <div class="mode-indicator" id="modeIndicator">
-          <span class="symbol">◈</span> petition
+        <button class="mode-arrow" id="prevMode" aria-label="Previous mode"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
+        <div class="mode-window" id="modeWindow">
+          <div class="mode-track" id="modeTrack"></div>
         </div>
-        <button class="mode-arrow" id="nextMode" aria-label="Next mode">►</button>
+        <button class="mode-arrow" id="nextMode" aria-label="Next mode"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
       </div>
       <span class="nexus-hint" id="nexusHint">hold to enter</span>
       <div class="crown-housing">
@@ -135,13 +148,11 @@
       <div class="input-row">
         <input type="text" class="main-input" id="mainInput" placeholder="lay it down…" maxlength="140" autocomplete="off" aria-label="Write your prayer" />
         <span class="char-counter" id="charCounter">0/140</span>
-        <button class="submit-btn" id="submitBtn" aria-label="Submit prayer">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
-        </button>
+        <button class="action-trigger" id="submitBtn" aria-label="Submit prayer">Commit</button>
       </div>
     </section>
 
-    <!-- ─── DOCK ─── -->
+        <!-- ─── DOCK ─── -->
     <nav class="dock">
       <button class="dock-btn active" id="navWorld">World</button>
       <span class="dock-sep">·</span>
@@ -152,6 +163,8 @@
       <button class="dock-btn" id="navDNA">DNA</button>
       <span class="dock-sep">·</span>
       <button class="dock-btn" id="navRequests">Requests</button>
+      <span class="dock-sep">·</span>
+      <button class="dock-btn" id="navTaw">TAW</button>
     </nav>
                   <!-- ─── FOOTER ─── -->
     <div class="app-footer">
@@ -204,6 +217,20 @@
               <span class="guided-info">4 Scriptures</span>
               <span class="guided-action">[ Start ]</span>
             </button>
+
+            <button class="guided-card" data-prayer="messiah">
+              <span class="guided-icon">☩</span>
+              <span class="guided-name">The Lord's Prayer</span>
+              <span class="guided-info">6 Scriptures</span>
+              <span class="guided-action">[ Start ]</span>
+            </button>
+
+            <button class="guided-card" data-prayer="solomon">
+              <span class="guided-icon">♛</span>
+              <span class="guided-name">Prayer of Solomon</span>
+              <span class="guided-info">6 Scriptures</span>
+              <span class="guided-action">[ Start ]</span>
+            </button>
           </div>
         </div>
         
@@ -233,14 +260,79 @@
       <div class="dna-header">
         <div class="dna-title">Prayer DNA</div>
         <div class="dna-identity"><span class="label" id="identityLabel">Pilgrim</span><span class="streak" id="streakLabel">· 0</span></div>
-        <button class="dna-close" id="closeDNA" aria-label="Close DNA">✕</button>
+        <div class="dna-header-controls">
+          <div class="dna-size-toggle" id="dnaSizeToggle">
+            <button class="dna-size-btn" data-size="small" aria-label="Small text">S</button>
+            <button class="dna-size-btn active" data-size="medium" aria-label="Medium text">M</button>
+            <button class="dna-size-btn" data-size="large" aria-label="Large text">L</button>
+          </div>
+          <button class="dna-close" id="closeDNA" aria-label="Close DNA">✕</button>
+        </div>
       </div>
-      <div id="dnaContent"></div>
-      <div id="dnaSpiderweb" style="margin:1rem 0; display:flex; justify-content:center; min-height:140px;"></div>
+      <div class="dna-search-wrap">
+        <span class="dna-search-icon">⌕</span>
+        <input type="text" class="dna-search-box" id="dnaSearchInput" placeholder="Search prayers or themes…" autocomplete="off" />
+      </div>
+      <div class="dna-metrics" id="dnaMetrics"></div>
+      <div class="themes-section">
+        <div class="themes-title">Top Themes</div>
+        <div id="dnaThemeBars"></div>
+      </div>
+      <div class="today-strip" id="todayStrip"></div>
+      <div class="filter-row" id="dnaFilterRow">
+        <button class="filter-chip active" data-filter="all">All</button>
+        <button class="filter-chip" data-filter="petition">Petition</button>
+        <button class="filter-chip" data-filter="lament">Lament</button>
+        <button class="filter-chip" data-filter="thanksgiving">Thanks</button>
+        <button class="filter-chip" data-filter="adoration">Adoration</button>
+        <button class="filter-chip" data-filter="confession">Confession</button>
+        <button class="filter-chip" data-filter="intercession">Intercession</button>
+      </div>
+      <div id="dnaList"></div>
       <div class="settings-link" id="settingsLinkDNA">⚙ Settings</div>
     </div>
 
-    <!-- ─── REQUESTS PANEL ─── -->
+    <!-- ─── DNA DETAIL MODAL ─── -->
+    <div class="dna-detail-modal" id="dnaDetailModal">
+      <div class="dna-detail-header">
+        <div class="dna-detail-title">Prayer Detail</div>
+        <button class="dna-detail-close" id="closeDnaDetail" aria-label="Close">✕</button>
+      </div>
+      <div class="dna-detail-body">
+        <div class="dna-detail-text" id="dnaDetailText"></div>
+        <div class="dna-detail-meta" id="dnaDetailMeta"></div>
+
+        <div class="detail-field">
+          <div class="detail-field-label">Theme</div>
+          <input type="text" class="detail-field-input" id="dnaDetailTheme" placeholder="e.g. healing, family…" autocomplete="off" list="dnaDetailThemeList" />
+          <datalist id="dnaDetailThemeList"></datalist>
+        </div>
+
+        <div class="detail-field">
+          <div class="detail-field-label">Answered</div>
+          <div class="answered-toggle" id="dnaDetailAnsweredToggle">
+            <div class="answered-dot" id="dnaDetailAnsweredDot"></div>
+            <span id="dnaDetailAnsweredLabel">Mark answered</span>
+          </div>
+        </div>
+
+        <div class="detail-field">
+          <div class="detail-field-label">Testimony</div>
+          <textarea class="detail-field-textarea" id="dnaDetailTestimony" rows="3" placeholder="How did He answer?"></textarea>
+        </div>
+
+        <div class="connections-block" id="dnaDetailConnections"></div>
+
+        <div class="dna-detail-actions">
+          <button class="pray-again-btn" id="dnaDetailPrayAgain">+ Pray again</button>
+          <button class="dna-detail-delete" id="dnaDetailDelete">Delete</button>
+        </div>
+
+        <button class="detail-save-btn" id="dnaDetailSave">Save Changes</button>
+      </div>
+    </div>
+
+       <!-- ─── REQUESTS PANEL ─── -->
     <div class="requests-panel" id="requestsPanel">
       <div class="dna-header">
         <div class="dna-title">Prayer Requests</div>
@@ -273,6 +365,7 @@
 
       <div class="sol-controls">
         <div class="sol-timer" id="solTimer">0s</div>
+        <button class="sanctuary-guided-next" id="sanctuaryGuidedNext"></button>
         <button class="leave-btn" id="leaveBtn" aria-label="Exit sanctuary">return</button>
       </div>
     </div>
@@ -280,83 +373,7 @@
     <!-- ─── TOAST ─── -->
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <!-- ─── TUTORIAL OVERLAY ─── -->
-    <div class="tutorial-overlay" id="tutorialOverlay">
-      <div class="tutorial-step active" id="tutStep0">
-        <div class="tutorial-icon">✦</div>
-        <div class="tutorial-title">Welcome to Palal</div>
-        <div class="tutorial-body">
-          Palal is the Hebrew word for <span class="accent">prayer</span> — to intercede, to entreat, to bring before God.
-          <br><br>
-          This is your sacred space to pray, to listen, and to stand in the gap.
-        </div>
-      </div>
-
-      <div class="tutorial-step" id="tutStep1">
-        <div class="tutorial-icon">◈</div>
-        <div class="tutorial-title">Choose Your Mode</div>
-        <div class="tutorial-body">
-          Swipe left or right to choose how you come before God today.
-          <br><br>
-          <span class="accent">Petition</span> · <span class="accent">Lament</span> · <span class="accent">Thanksgiving</span>
-          <br>
-          <span class="accent">Adoration</span> · <span class="accent">Confession</span>
-          <br><br>
-          Each mode shapes the prayer and the scripture that meets you.
-        </div>
-      </div>
-
-      <div class="tutorial-step" id="tutStep2">
-        <div class="tutorial-hold-demo">
-          <div class="tutorial-hold-dot"></div>
-        </div>
-        <div class="tutorial-title">Hold to Enter</div>
-        <div class="tutorial-body">
-          Type your prayer in the field, then <span class="accent">hold the white circle</span> until it fills.
-          <br><br>
-          You'll enter the <span class="accent">Sanctuary</span> — a space of still prayer with rotating scripture.
-        </div>
-      </div>
-
-      <div class="tutorial-step" id="tutStep3">
-        <div class="tutorial-icon">◉</div>
-        <div class="tutorial-title">Map, Prayer &amp; DNA</div>
-        <div class="tutorial-body">
-          <span class="accent">Map</span> — Pray for persecuted nations, conflict zones and disaster areas
-          <br><br>
-          <span class="accent">Requests</span> — Share prayer requests with the community
-          <br><br>
-          <span class="accent">DNA</span> — Track your prayer journey and testimonies
-        </div>
-      </div>
-
-      <div class="tutorial-step" id="tutStep4">
-        <div class="tutorial-icon">✦</div>
-        <div class="tutorial-title">Your Prayer DNA</div>
-        <div class="tutorial-body">
-          Every prayer builds your <span class="accent">DNA</span> — a living portrait of your prayer life.
-          <br><br>
-          Profile shape, weekly rhythm, prayer streaks, and saved testimonies all live there.
-        </div>
-      </div>
-
-      <div class="tutorial-dots">
-        <div class="tutorial-dot active" id="tutDot0"></div>
-        <div class="tutorial-dot" id="tutDot1"></div>
-        <div class="tutorial-dot" id="tutDot2"></div>
-        <div class="tutorial-dot" id="tutDot3"></div>
-        <div class="tutorial-dot" id="tutDot4"></div>
-      </div>
-
-      <div class="tutorial-actions">
-        <button class="tutorial-skip" id="tutSkip">Skip</button>
-        <button class="tutorial-next" id="tutNext">Next →</button>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════
-    SETTINGS PANEL - PRESETS ONLY
-    ═══════════════════════════════════════════════ -->
+        <!-- ─── SETTINGS PANEL ─── -->
     <div class="settings-panel" id="settingsPanel">
       <div class="settings-header">
         <span class="settings-title">⚙ Settings</span>
@@ -406,7 +423,7 @@
         
         <div class="settings-divider"></div>
         
-               <!-- ─── ACTIONS ─── -->
+        <!-- ─── ACTIONS ─── -->
         <div class="settings-section">
           <div class="settings-actions">
             <button class="settings-btn" id="aboutBtn">✦ About Palal</button>
@@ -414,7 +431,6 @@
           </div>
         </div>
 
-      </div>
         <!-- ─── SUPPORT ─── -->
         <div class="settings-divider"></div>
         <div class="settings-section">
@@ -426,77 +442,102 @@
               ☕ Support Palal
             </a>
           </div>
-          </div>
         </div>
-           
-    <!-- ═══════════════════════════════════════════════
-    ABOUT MODAL
-    ═══════════════════════════════════════════════ -->
-    <div class="about-modal" id="aboutModal">
-      <div class="about-modal-content">
-        <button class="about-close" id="aboutClose">✕</button>
-        
-        <div class="about-section">
-          <div class="about-title">✦ PALAL</div>
-          <div class="about-subtitle">prayer · intercession · to stand in the gap</div>
-        </div>
-        
-        <div class="about-section">
-          <p>Palal is the Hebrew word for prayer — to intercede, to entreat, to bring before God.</p>
-          <p>It appears throughout the Hebrew Scriptures, from Abraham pleading for Sodom to Daniel confessing for his people.</p>
-        </div>
-        
-        <div class="about-section">
-          <div class="about-name-preview">
-            <span class="about-label">The Messiah is referred to as:</span>
-            <span class="about-messiah-name" id="aboutMessiahName">Yeshua</span>
-            <span class="about-hebrew" id="aboutHebrew">יֵשׁוּעַ</span>
-            <span class="about-note">(Change this in Settings)</span>
-          </div>
-        </div>
-        
-        <div class="about-section">
-          <div class="about-name-preview">
-            <span class="about-label">God is referred to as:</span>
-            <span class="about-god-name" id="aboutGodName">Yahuah</span>
-            <span class="about-hebrew" id="aboutGodHebrew">יָהוּה</span>
-            <span class="about-note">(Change this in Settings)</span>
-          </div>
-        </div>
-        
-        <div class="about-section">
-          <div class="about-gospel">
-            <div class="about-gospel-title">The Story of Redemption</div>
-            <p>From Genesis to Revelation, the story is one of redemption — God's call to His people, His faithfulness, and His promise of restoration.</p>
-            <p>In the Tanakh, we see the promise of a Messiah who would bring redemption. In the New Testament, we see this promise fulfilled in <span class="about-messiah-name-dynamic">Yeshua</span>.</p>
-          </div>
-        </div>
-        
-        <div class="about-section">
-          <div class="about-values">
-            <span class="value-tag">✦ Prayer with intention</span>
-            <span class="value-tag">✦ Honesty</span>
-            <span class="value-tag">✦ Beauty</span>
-            <span class="value-tag">✦ Connection</span>
-            <span class="value-tag">✦ Stillness</span>
-          </div>
-        </div>
-        
-        <div class="about-section">
-          <div class="about-verse" id="aboutVerse">"The LORD is near to all who call on him, to all who call on him in truth."</div>
-          <div class="about-verse-ref" id="aboutVerseRef">— Psalm 145:18</div>
-        </div>
-        
-        <div class="about-section">
-          <div class="about-credit">Made with prayer · London · 2026</div>
-          <div class="about-version">Palal v2.0</div>
-        </div>
-        
       </div>
     </div>
-  </div>
+
+    <!-- ─── ABOUT MODAL ─── -->
+    <div class="about-modal" id="aboutModal">
+      ...
+    </div>
+
+    <!-- ─── TAW PANEL ─── -->
+    <div class="taw-panel" id="tawPanel">
+      <div class="dna-header">
+        <div class="dna-title">✦ TAW</div>
+        <button class="dna-close" id="closeTaw" aria-label="Close TAW">✕</button>
+      </div>
+
+      <div class="taw-content">
+        <div class="taw-hero">
+          <div class="taw-word" id="tawWord">Exodus</div>
+          <div class="taw-sub" id="tawSub">—</div>
+        </div>
+
+        <div class="taw-input-wrapper">
+          <input 
+            type="text" 
+            class="taw-input" 
+            id="tawInput" 
+            placeholder="Type a name…" 
+            autocomplete="off" 
+            autocorrect="off" 
+            autocapitalize="off" 
+            spellcheck="false"
+            maxlength="30"
+          >
+          <div class="taw-underline"></div>
+        </div>
+
+        <div class="taw-requirement" id="tawRequirement">
+          Next: <strong id="tawReqLetter">—</strong> · <span id="tawReqCount">0 remaining</span>
+        </div>
+
+        <div class="taw-strikes" id="tawStrikes">
+          <span class="taw-strike-dot"></span>
+          <span class="taw-strike-dot"></span>
+          <span class="taw-strike-dot"></span>
+        </div>
+
+        <div class="taw-controls">
+          <button class="taw-btn" id="tawHintBtn">Hint</button>
+          <button class="taw-btn" id="tawSkipBtn">Skip</button>
+          <button class="taw-btn" id="tawModesBtn">Modes</button>
+        </div>
+
+        <div class="taw-modes" id="tawModesMenu">
+          <button class="taw-mode-chip active" data-taw-mode="chain">Chain</button>
+          <button class="taw-mode-chip" data-taw-mode="storm">Storm</button>
+          <button class="taw-mode-chip" data-taw-mode="collector">Collector</button>
+          <button class="taw-mode-chip" data-taw-mode="alphabet">Alphabet</button>
+          <button class="taw-mode-chip" data-taw-mode="timeattack">Time Attack</button>
+        </div>
+
+        <div class="taw-score" id="tawScore">0 / 66</div>
+
+        <div class="taw-gameover" id="tawGameOver">
+          <div class="taw-gameover-card">
+            <div class="taw-gameover-title" id="tawGoTitle">Journey Ended</div>
+            <div class="taw-gameover-sub" id="tawGoSub">The path has closed.</div>
+            <div class="taw-gameover-stats">
+              <div class="taw-gameover-stat">
+                <span class="taw-gameover-label">Points</span>
+                <span class="taw-gameover-value" id="tawGoPoints">0</span>
+              </div>
+              <div class="taw-gameover-stat">
+                <span class="taw-gameover-label">Names</span>
+                <span class="taw-gameover-value" id="tawGoNames">0</span>
+              </div>
+              <div class="taw-gameover-stat">
+                <span class="taw-gameover-label">Books</span>
+                <span class="taw-gameover-value" id="tawGoBooks">0/66</span>
+              </div>
+              <div class="taw-gameover-stat">
+                <span class="taw-gameover-label">Streak</span>
+                <span class="taw-gameover-value" id="tawGoStreak">0</span>
+              </div>
+            </div>
+            <button class="taw-gameover-btn" id="tawGoBtn">New Journey</button>
+          </div>
+        </div>
+      </div>
+    </div>
+   
+
+
+  </div>  <!-- ← CLOSES .enclosure -->
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src=".//script.js"></script>
+  <script src=".//script.js?v=20260825120003"></script>
 </body>
 </html>

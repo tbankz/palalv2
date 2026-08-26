@@ -44,7 +44,6 @@ const DEFAULT_STATE = {
   modeSaved: { temptation: [], healing: [] },
   homeCity: null,
   currentCity: null,
-  globalCounter: 12847,
   messiahName: 'Yeshua',
   godName: 'Yahuah',
   _guidedActive: false,
@@ -439,7 +438,108 @@ let mapInstance = null;
 let mapInitialized = false;
 let cityMarkers = [];
 let mapCounts = {};
+let homeLocatorMarker = null;
 let tooltipTimeout = null;
+let LIVE_CRISES = [];
+
+const MARKER_CLASS_MAP = {
+  'Conflict': 'conflict',
+  'Restricted': 'restricted',
+  'Monitored': 'monitored',
+  'Disaster': 'disaster',
+  'Hunger': 'hunger',
+  'Displacement': 'displacement'
+};
+
+// ─── LIVE CRISIS FEED (NASA EONET) ───────────────
+// Free, keyless, CORS-enabled public API for active natural-disaster events.
+const EONET_CATEGORY_LEVEL = {
+  wildfires: 'Disaster',
+  severeStorms: 'Disaster',
+  volcanoes: 'Disaster',
+  earthquakes: 'Disaster',
+  floods: 'Disaster',
+  landslides: 'Disaster',
+  seaLakeIce: 'Disaster',
+  dustHaze: 'Disaster',
+  drought: 'Hunger',
+  manmade: 'Conflict'
+};
+
+async function loadLiveCrises() {
+  const cacheKey = 'palal_crisis_cache_v1';
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.fetchedAt && Date.now() - parsed.fetchedAt < dayMs) {
+        return { events: parsed.events, isFresh: false };
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const res = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=40');
+    if (!res.ok) throw new Error('EONET request failed: ' + res.status);
+    const data = await res.json();
+    const events = (data.events || [])
+      .map(ev => {
+        const geom = ev.geometry && ev.geometry[ev.geometry.length - 1];
+        if (!geom || !geom.coordinates) return null;
+        const categoryId = ev.categories && ev.categories[0] && ev.categories[0].id;
+        const categoryTitle = (ev.categories && ev.categories[0] && ev.categories[0].title) || 'Event';
+        return {
+          id: ev.id,
+          country: ev.title,
+          lat: geom.coordinates[1],
+          lng: geom.coordinates[0],
+          level: EONET_CATEGORY_LEVEL[categoryId] || 'Monitored',
+          prayer: `Pray for those affected by this ${categoryTitle.toLowerCase()}.`,
+          isLive: true
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 25);
+
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), events }));
+    } catch (e) {}
+
+    return { events, isFresh: true };
+  } catch (e) {
+    console.warn('Palal: live crisis feed unavailable —', e.message);
+    return { events: [], isFresh: false };
+  }
+}
+
+function addCrisisMarker(point) {
+  const markerEl = document.createElement('div');
+  const count = mapCounts[point.id] || 0;
+  markerEl.className = 'custom-marker ' + (MARKER_CLASS_MAP[point.level] || 'monitored') + (count > 0 ? ' has-prayers' : '');
+  const marker = L.marker([point.lat, point.lng], {
+    icon: L.divIcon({ html: markerEl.outerHTML, className: '', iconSize: [10, 10], iconAnchor: [5, 5] }),
+    riseOnHover: true,
+  }).addTo(mapInstance);
+
+  const idArg = typeof point.id === 'number' ? point.id : `'${point.id}'`;
+
+  marker.bindPopup(`
+    <div class="map-popup-title">${point.country}</div>
+    <div class="map-popup-tag alert">${point.level}${point.isLive ? ' · live' : ''}</div>
+    <div class="map-popup-quote">"${point.prayer}"</div>
+    <button class="map-popup-btn" onclick="prayForMapPoint(${idArg})">Pray for this</button>
+    <div class="map-popup-count">${count} intercessors</div>
+  `, { minWidth: 160, maxWidth: 200 });
+
+  return marker;
+}
+
+function renderLiveCrisisMarkers() {
+  if (!mapInstance) return;
+  LIVE_CRISES.forEach(point => addCrisisMarker(point));
+}
 
 // ─── COUNTRY TOOLTIP ────────────────────────────
 function showCountryTooltip(countryCode, markerElement) {
@@ -639,10 +739,8 @@ if (modalPrayBtn) {
 
     const mapPanel = $('mapPanel');
     const stageAxis = $('stageAxis');
-    const globalCounter = $('globalCounter');
     if (mapPanel) mapPanel.classList.add('hidden');
     if (stageAxis) stageAxis.classList.remove('hidden');
-    if (globalCounter) globalCounter.classList.add('hidden');
 
     toast('Praying for ' + name);
 
@@ -751,23 +849,23 @@ window.prayForRequest = function(index) {
   renderRequests();
   renderDNA();
 
-  D.globalCounter = (D.globalCounter || 12847) + 1;
-  saveLocal();
-  const counter = document.querySelector('.global-counter .num');
-  if (counter) counter.textContent = D.globalCounter.toLocaleString();
-
   toast('Prayed for this request');
   vibrate();
 };
 
 // ─── DNA ─────────────────────────────────────────
+const DNA_SUGGESTED_THEMES = ['healing', 'family', 'work', 'strength', 'trust', 'hope', 'rest', 'peace', 'grace', 'comfort'];
+let dnaSearchQuery = '';
+let dnaModeFilter = 'all';
+
 function renderDNA() {
-  const container = $('dnaContent');
-  if (!container) return;
+  const listEl = $('dnaList');
+  const metricsEl = $('dnaMetrics');
+  if (!listEl || !metricsEl) return;
 
   const total = D.entries.length;
   const answered = D.entries.filter(e => e.answered).length;
-  const conf = D.confBurnt || 0;
+  const themed = D.entries.filter(e => e.theme).length;
   const sol = D.totalSolSec || 0;
   const streak = D.streak || 0;
 
@@ -783,245 +881,172 @@ function renderDNA() {
   if (identityLabel) identityLabel.textContent = identity;
   if (streakLabel) streakLabel.textContent = '· ' + streak;
 
-  if (total === 0 && conf === 0) {
-    container.innerHTML = `
-      <div class="dna-metrics">
-        <div class="dna-metric"><span class="value">0</span><span class="label">Prayers</span></div>
-        <div class="dna-metric"><span class="value">0</span><span class="label">Burnt</span></div>
-        <div class="dna-metric"><span class="value">0m</span><span class="label">Stillness</span></div>
-      </div>
-      <div class="dna-empty">Start praying to see your DNA.</div>
-    `;
-    renderSpiderweb();
+  metricsEl.innerHTML = [
+    { v: total, l: 'Prayers' },
+    { v: answered, l: 'Answered' },
+    { v: themed, l: 'Themed' },
+    { v: Math.floor(sol / 60) + 'm', l: 'In Prayer' },
+    { v: streak, l: 'Streak' }
+  ].map(m => `<div class="dna-metric"><span class="value">${m.v}</span><span class="label">${m.l}</span></div>`).join('');
+
+  renderDnaTodayStrip();
+  renderDnaThemeBars();
+
+  if (total === 0) {
+    listEl.innerHTML = `<div class="dna-empty">Start praying to see your DNA.</div>`;
     return;
   }
 
-  let entriesHTML = '';
-  const displayEntries = D.entries.slice(0, 15);
+  const q = dnaSearchQuery.trim().toLowerCase();
+  const modeFiltered = dnaModeFilter === 'all' ? D.entries : D.entries.filter(e => e.mode === dnaModeFilter);
+  const searchFiltered = q
+    ? modeFiltered.filter(e => e.text.toLowerCase().includes(q) || (e.theme && e.theme.toLowerCase().includes(q)))
+    : modeFiltered;
 
-  if (displayEntries.length > 0) {
-    entriesHTML = `<div style="margin-top:0.75rem;border-top:0.5px solid var(--gold-line);padding-top:0.75rem;">
-      <div style="font-size:0.4375rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--ink-mid);opacity:0.4;margin-bottom:0.5rem;">Recent Prayers</div>`;
+  if (!searchFiltered.length) {
+    listEl.innerHTML = `<div class="dna-empty">${q ? 'No prayers match "' + escapeHtml(dnaSearchQuery) + '"' : 'No prayers in this filter yet'}</div>`;
+    return;
+  }
 
-    displayEntries.forEach((entry, idx) => {
-      const modeEmoji = {
-        petition: '◈',
-        confession: '◐',
-        thanksgiving: '✧',
-        intercession: '✦',
-        lament: '◌',
-        adoration: '◉'
-      } [entry.mode] || '◈';
+  const displayEntries = searchFiltered.slice(0, 15);
+  let listHTML = '';
 
-      const isAnswered = entry.answered ? '✓ answered' : '';
-      const cityText = entry.city && entry.city !== 'Global' ? entry.city : '';
-      const date = entry.timestamp ? new Date(entry.timestamp).toLocaleDateString() : '';
-      const safeText = escapeHtml(entry.text.length > 70 ? entry.text.slice(0, 70) + '…' : entry.text);
-      const safeMode = escapeHtml(entry.mode);
-      const safeCity = escapeHtml(cityText);
-      const safeTestimony = entry.testimony ? escapeHtml(entry.testimony) : '';
+  displayEntries.forEach((entry) => {
+    const id = entry.id;
+    const modeEmoji = {
+      petition: '◈', confession: '◐', thanksgiving: '✧',
+      intercession: '✦', lament: '◌', adoration: '◉'
+    }[entry.mode] || '◈';
 
-      entriesHTML += `
-        <div class="dna-entry" onclick="toggleDNADetail(${idx})">
-          <button class="dna-delete" onclick="event.stopPropagation();deleteEntry(${idx})" aria-label="Delete prayer">✕</button>
+    const cityText = entry.city && entry.city !== 'Global' ? entry.city : '';
+    const date = entry.timestamp ? new Date(entry.timestamp).toLocaleDateString() : '';
+    const safeText = escapeHtml(entry.text.length > 70 ? entry.text.slice(0, 70) + '…' : entry.text);
+    const safeMode = escapeHtml(entry.mode);
+    const safeCity = escapeHtml(cityText);
+    const safeTheme = entry.theme ? escapeHtml(entry.theme) : '';
+
+    listHTML += `
+      <div class="dna-entry" id="dnaEntry_${id}" onclick="openDnaDetail(${id})">
+        <div class="dna-entry-content">
           <div class="dna-text">"${safeText}"</div>
           <div class="dna-meta">
             <span class="mode-badge">${modeEmoji} ${safeMode}</span>
-            ${isAnswered ? '<span class="answered-tag">✓ answered</span>' : ''}
+            ${entry.answered ? '<span class="answered-badge">Answered</span>' : ''}
             <span class="city-tag">${safeCity ? '· ' + safeCity : ''}</span>
+            ${safeTheme ? `<span class="theme-chip">⬡ ${safeTheme}</span>` : ''}
             <span style="opacity:0.4;">${date}</span>
           </div>
-          <div class="dna-testimony ${entry.testimony ? 'show' : ''}" id="testimony_${idx}">
-            "${safeTestimony}"
-            <div class="from">— testimony</div>
-          </div>
-          <div class="dna-actions ${entry.testimony ? 'show' : ''}" id="actions_${idx}">
-            <button class="primary" onclick="event.stopPropagation();toggleAnswer(${idx})">${entry.answered ? 'Mark unanswered' : 'Mark answered'}</button>
-            <button onclick="event.stopPropagation();toggleTestimonyInput(${idx})">${entry.testimony ? 'Edit testimony' : 'Add testimony'}</button>
-            <button class="danger" onclick="event.stopPropagation();deleteEntry(${idx})">Delete</button>
-          </div>
-          <input class="dna-testimony-input ${entry.testimony ? 'show' : ''}" id="testimonyInput_${idx}" placeholder="Write your testimony…" value="${safeTestimony}" onfocus="this.select()" />
-          <div style="display:${entry.testimony ? 'none' : 'block'};margin-top:0.25rem;">
-            <button class="primary" style="background:none;border:0.5px solid var(--gold-line);border-radius:99px;padding:0.125rem 0.5rem;font-size:0.3125rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-mid);cursor:pointer;min-height:28px;" onclick="event.stopPropagation();saveTestimony(${idx})">Save testimony</button>
-          </div>
         </div>
-      `;
-    });
+        <div class="click-indicator">›</div>
+      </div>
+    `;
+  });
 
-    if (D.entries.length > 15) {
-      entriesHTML += `<div style="font-size:0.375rem;color:var(--ink-mid);opacity:0.3;text-align:center;padding-top:0.5rem;">+ ${D.entries.length - 15} more prayers</div>`;
-    }
-
-    entriesHTML += `</div>`;
+  if (searchFiltered.length > 15) {
+    listHTML += `<div style="font-size:0.375rem;color:var(--ink-mid);opacity:0.3;text-align:center;padding-top:0.5rem;">+ ${searchFiltered.length - 15} more prayers</div>`;
   }
 
-  container.innerHTML = `
-    <div class="dna-metrics">
-      <div class="dna-metric"><span class="value">${total}</span><span class="label">Prayers</span></div>
-      <div class="dna-metric"><span class="value">${answered}</span><span class="label">Answered</span></div>
-      <div class="dna-metric"><span class="value">${conf}</span><span class="label">Burnt</span></div>
-      <div class="dna-metric"><span class="value">${Math.floor(sol/60)}m</span><span class="label">Stillness</span></div>
-    </div>
-    <div class="dna-empty" style="font-size:0.5rem;opacity:0.4;border-bottom:0.5px solid var(--gold-line);padding-bottom:0.75rem;">
-      ${total} prayers · ${answered} answered · ${streak} day streak
-    </div>
-    ${entriesHTML}
-  `;
-
-  renderSpiderweb();
+  listEl.innerHTML = listHTML;
 }
 
-// ─── SPIDERWEB DNA ──────────────────────────────
-function renderSpiderweb() {
-  const container = document.getElementById('dnaSpiderweb');
-  if (!container) return;
-
-  const home = homeCity || { name: 'Madrid', lat: 40.4168, lng: -3.7038 };
-  const homeLat = home.lat;
-  const homeLng = home.lng;
-
-  const prayedCountries = D.entries
-    .filter(e => e.city && e.city !== 'Global' && e.city !== 'Request' && e.city !== 'Heart')
-    .map(e => {
-      for (const [code, profile] of Object.entries(COUNTRY_PROFILES)) {
-        if (profile.name === e.city) {
-          const capital = COUNTRY_CAPITALS[code];
-          if (capital) {
-            return {
-              name: e.city,
-              lat: capital.lat,
-              lng: capital.lng,
-              count: 1
-            };
-          }
-        }
-      }
-      return null;
-    })
-    .filter(Boolean);
-
-  const aggregated = {};
-  prayedCountries.forEach(c => {
-    if (!aggregated[c.name]) {
-      aggregated[c.name] = { ...c, count: 0 };
-    }
-    aggregated[c.name].count++;
-  });
-  const uniqueCountries = Object.values(aggregated);
-
-  if (uniqueCountries.length === 0) {
-    container.innerHTML = `<div style="font-size:0.5rem;color:var(--ink-mid);opacity:0.3;text-align:center;padding:1rem 0;">Pray for countries to see your prayer journey</div>`;
+function renderDnaThemeBars() {
+  const el = $('dnaThemeBars');
+  if (!el) return;
+  const counts = {};
+  D.entries.forEach(e => { if (e.theme) counts[e.theme] = (counts[e.theme] || 0) + 1; });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!top.length) {
+    el.innerHTML = `<div class="no-conn" style="text-align:center;">No themes yet</div>`;
     return;
   }
-
-  const totalDistance = uniqueCountries.reduce((sum, c) => {
-    const dist = getDistance(homeLat, homeLng, c.lat, c.lng);
-    return sum + dist;
-  }, 0);
-
-  const width = 260;
-  const height = 200;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = 70;
-
-  let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`;
-
-  svg += `<circle cx="${centerX}" cy="${centerY}" r="4" class="spiderweb-center" />`;
-  svg += `<text x="${centerX}" y="${centerY + 16}" text-anchor="middle" class="spiderweb-label">${home.name}</text>`;
-
-  const maxCount = Math.max(...uniqueCountries.map(c => c.count), 1);
-  uniqueCountries.forEach((c, index) => {
-    const angle = (index / uniqueCountries.length) * 2 * Math.PI - Math.PI / 2;
-    const x = centerX + radius * Math.cos(angle);
-    const y = centerY + radius * Math.sin(angle);
-
-    svg += `<line x1="${centerX}" y1="${centerY}" x2="${x}" y2="${y}" class="spiderweb-line" />`;
-
-    const dotSize = 3 + (c.count / maxCount) * 3;
-    svg += `<circle cx="${x}" cy="${y}" r="${dotSize}" class="spiderweb-dot" />`;
-
-    const label = c.name.length > 8 ? c.name.slice(0, 6) + '…' : c.name;
-    const labelOffset = dotSize + 6;
-    const lx = x + labelOffset * Math.cos(angle);
-    const ly = y + labelOffset * Math.sin(angle);
-    svg += `<text x="${lx}" y="${ly}" text-anchor="${angle > Math.PI/2 && angle < 3*Math.PI/2 ? 'end' : 'start'}" class="spiderweb-label">${label}</text>`;
-  });
-
-  svg += `</svg>`;
-
-  const distanceKm = Math.round(totalDistance);
-  const distanceDisplay = distanceKm > 1000 ? (distanceKm / 1000).toFixed(1) + 'k km' : distanceKm + ' km';
-
-  container.innerHTML = `
-    ${svg}
-    <div style="font-size:0.4375rem;color:var(--gold);opacity:0.5;text-align:center;margin-top:0.25rem;">
-      ✦ Prayers travelled <span style="font-weight:400;">${distanceDisplay}</span>
-      · ${uniqueCountries.length} countries
-    </div>
-  `;
+  const max = top[0][1];
+  el.innerHTML = top.map(([theme, count]) =>
+    `<div class="theme-bar-item"><span class="theme-name">${escapeHtml(theme)}</span><div class="theme-bar-container"><div class="theme-bar-fill" style="width:${(count / max) * 100}%"></div></div><span class="theme-count">${count}</span></div>`
+  ).join('');
 }
 
-function getDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+// ─── DNA DETAIL MODAL ────────────────────────────
+let dnaDetailId = null;
+let dnaDetailPendingAnswered = false;
+
+window.openDnaDetail = function(id) {
+  const entry = D.entries.find(e => e.id === id);
+  if (!entry) return;
+  dnaDetailId = id;
+  dnaDetailPendingAnswered = !!entry.answered;
+
+  const cityText = entry.city && entry.city !== 'Global' ? entry.city : '';
+  const date = entry.timestamp ? new Date(entry.timestamp).toLocaleDateString() : '';
+
+  const textEl = $('dnaDetailText');
+  const metaEl = $('dnaDetailMeta');
+  const themeEl = $('dnaDetailTheme');
+  const testimonyEl = $('dnaDetailTestimony');
+  const themeList = $('dnaDetailThemeList');
+
+  if (textEl) textEl.textContent = '"' + entry.text + '"';
+  if (metaEl) metaEl.textContent = [date, entry.mode, cityText].filter(Boolean).join(' · ');
+  if (themeEl) themeEl.value = entry.theme || '';
+  if (testimonyEl) testimonyEl.value = entry.testimony || '';
+  if (themeList) themeList.innerHTML = DNA_SUGGESTED_THEMES.map(t => `<option value="${t}">`).join('');
+
+  updateDnaDetailAnsweredUI(dnaDetailPendingAnswered);
+  renderDnaDetailConnections(entry);
+
+  const modal = $('dnaDetailModal');
+  if (modal) modal.classList.add('open');
+};
+
+window.closeDnaDetail = function() {
+  const modal = $('dnaDetailModal');
+  if (modal) modal.classList.remove('open');
+  dnaDetailId = null;
+};
+
+function updateDnaDetailAnsweredUI(answered) {
+  const dot = $('dnaDetailAnsweredDot');
+  const label = $('dnaDetailAnsweredLabel');
+  if (dot) dot.classList.toggle('lit', !!answered);
+  if (label) label.textContent = answered ? 'Answered' : 'Mark answered';
+}
+
+function renderDnaDetailConnections(entry) {
+  const el = $('dnaDetailConnections');
+  if (!el) return;
+  if (!entry.theme) {
+    el.innerHTML = `<div class="no-conn">Assign a theme to reveal connections</div>`;
+    return;
+  }
+  const matches = D.entries.filter(o => o.id !== entry.id && o.theme && o.theme.toLowerCase() === entry.theme.toLowerCase());
+  if (!matches.length) {
+    el.innerHTML = `<div class="no-conn">No other prayers share this theme yet</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="conn-label">Resonant prayers · "${escapeHtml(entry.theme)}"</div>` +
+    matches.map(m => `<div class="conn-item" onclick="openDnaDetail(${m.id})"><div class="conn-text">"${escapeHtml(m.text.length > 60 ? m.text.slice(0, 57) + '…' : m.text)}"</div><div class="conn-sub">${escapeHtml(m.mode)} · ${m.timestamp ? new Date(m.timestamp).toLocaleDateString() : ''}${m.answered ? ' · answered' : ''}</div></div>`).join('');
+}
+
+function renderDnaTodayStrip() {
+  const strip = $('todayStrip');
+  if (!strip) return;
+  const today = new Date().toISOString().split('T')[0];
+  const todayEntries = D.entries.filter(e => e.timestamp && e.timestamp.split('T')[0] === today);
+  if (!todayEntries.length) {
+    strip.innerHTML = `<div class="today-strip-empty">no prayers yet today</div>`;
+    return;
+  }
+  const counts = { petition: 0, lament: 0, thanksgiving: 0, adoration: 0, confession: 0, intercession: 0 };
+  todayEntries.forEach(e => { if (counts[e.mode] !== undefined) counts[e.mode]++; });
+  strip.innerHTML = Object.entries(counts)
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => `<div class="today-pill"><span class="today-pill-count">${v}</span>${escapeHtml(k)}</div>`)
+    .join('');
 }
 
 // ─── DNA INTERACTIONS ────────────────────────────
-window.toggleDNADetail = function(idx) {
-  const entry = D.entries[idx];
-  if (!entry) return;
-  const testimony = document.getElementById('testimony_' + idx);
-  const actions = document.getElementById('actions_' + idx);
-  if (testimony) testimony.classList.toggle('show');
-  if (actions) actions.classList.toggle('show');
-};
-
-window.toggleAnswer = function(idx) {
-  const entry = D.entries[idx];
-  if (!entry) return;
-  entry.answered = !entry.answered;
-  saveLocal();
-  renderDNA();
-  toast(entry.answered ? '✓ Marked answered' : '○ Marked awaiting');
-};
-
-window.toggleTestimonyInput = function(idx) {
-  const input = document.getElementById('testimonyInput_' + idx);
-  if (!input) return;
-  input.classList.toggle('show');
-  if (input.classList.contains('show')) {
-    input.focus();
-    input.select();
-  }
-};
-
-window.saveTestimony = function(idx) {
-  const entry = D.entries[idx];
-  if (!entry) return;
-  const input = document.getElementById('testimonyInput_' + idx);
-  if (!input) return;
-  const testimony = input.value.trim();
-  if (!testimony) {
-    toast('Write a testimony first');
-    return;
-  }
-  entry.testimony = testimony;
-  if (!entry.answered) entry.answered = true;
-  saveLocal();
-  renderDNA();
-  toast('Testimony saved');
-};
-
-window.deleteEntry = function(idx) {
-  const entry = D.entries[idx];
-  if (!entry) return;
+window.deleteEntry = function(id) {
+  const idx = D.entries.findIndex(e => e.id === id);
+  if (idx === -1) return;
   if (!confirm('Delete this prayer?')) return;
   D.entries.splice(idx, 1);
   saveLocal();
@@ -1029,7 +1054,121 @@ window.deleteEntry = function(idx) {
   toast('✕ Prayer deleted');
 };
 
+window.prayEntryAgain = function(id) {
+  const entry = D.entries.find(e => e.id === id);
+  if (!entry) return;
+  entry.repeatCount = (entry.repeatCount || 0) + 1;
+  saveLocal();
+  renderDNA();
+  toast('Prayed again · ' + (entry.repeatCount + 1) + 'x total');
+};
+
 // ─── MAP ─────────────────────────────────────────
+async function resolveUserRegion(lat, lng) {
+  const cacheKey = 'palal_region_' + Math.round(lat * 10) + '_' + Math.round(lng * 10);
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`,
+      { headers: { 'Accept-Language': 'en' } }
+    );
+    if (!res.ok) throw new Error('Reverse geocode failed: ' + res.status);
+    const data = await res.json();
+    const addr = data.address || {};
+    const countryCode = (addr.country_code || '').toLowerCase();
+    const cityName = addr.city || addr.town || addr.village || addr.county || addr.state || null;
+    const result = { countryCode, cityName, countryName: addr.country || null };
+    try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch (e) {}
+    return result;
+  } catch (e) {
+    console.warn('Palal: reverse geocode failed, showing world view instead.', e);
+    return null;
+  }
+}
+
+function showRegionWelcome(region) {
+  if (!region) return;
+  const profile = COUNTRY_PROFILES[region.countryCode];
+  const capital = COUNTRY_CAPITALS[region.countryCode];
+  const card = document.getElementById('regionWelcomeCard');
+  if (!card) return;
+
+  const placeLabel = region.cityName || (capital ? capital.name : region.countryName || 'your region');
+  const nameEl = document.getElementById('regionWelcomeName');
+  const factEl = document.getElementById('regionWelcomeFact');
+  const statsEl = document.getElementById('regionWelcomeStats');
+  const btn = document.getElementById('regionWelcomePrayBtn');
+
+  if (nameEl) nameEl.textContent = placeLabel;
+
+  if (profile) {
+    if (factEl) factEl.textContent = profile.prayerPoints[0];
+    if (statsEl) {
+      const popDisplay = profile.population >= 1000000
+        ? (profile.population / 1000000).toFixed(1) + 'M'
+        : profile.population.toLocaleString();
+      statsEl.innerHTML = `
+        <span class="region-welcome-stat"><span class="k">Population</span><span class="v">${popDisplay}</span></span>
+        <span class="region-welcome-stat"><span class="k">Christian</span><span class="v">${profile.christian}%</span></span>
+      `;
+    }
+    if (btn) {
+      btn.style.display = 'inline-flex';
+      btn.onclick = () => { hideRegionWelcome(); prayForCountry(region.countryCode); };
+    }
+  } else {
+    if (factEl) factEl.textContent = 'No profile data yet for this region — but you can still pray for it.';
+    if (statsEl) statsEl.innerHTML = '';
+    if (btn) btn.style.display = 'none';
+  }
+
+  card.classList.add('show');
+}
+
+function hideRegionWelcome() {
+  const card = document.getElementById('regionWelcomeCard');
+  if (card) card.classList.remove('show');
+}
+
+// ─── MAP INCENSE FEED ────────────────────────────
+let mapIncensePointer = 0;
+let mapIncenseInterval = null;
+
+function getMapIncensePool() {
+  const pool = PRAYER_POINTS.slice();
+  if (typeof LIVE_CRISES !== 'undefined' && LIVE_CRISES.length) pool.push(...LIVE_CRISES);
+  return pool;
+}
+
+function manifestNextMapIncense() {
+  const pool = getMapIncensePool();
+  if (!pool.length) return;
+  const smokeEl = document.getElementById('mapIncenseSmoke');
+  const textEl = document.getElementById('mapIncenseText');
+  const joinBtn = document.getElementById('mapIncenseJoinBtn');
+  if (!smokeEl || !textEl) return;
+
+  smokeEl.classList.add('dissolve');
+  setTimeout(function() {
+    const point = pool[mapIncensePointer % pool.length];
+    mapIncensePointer++;
+    textEl.textContent = point.country + ': ' + point.prayer;
+    if (joinBtn) joinBtn.onclick = function() { prayForMapPoint(point.id); };
+    smokeEl.classList.remove('dissolve');
+    smokeEl.classList.add('active');
+  }, 800);
+}
+
+function initMapIncenseFeed() {
+  manifestNextMapIncense();
+  if (mapIncenseInterval) clearInterval(mapIncenseInterval);
+  mapIncenseInterval = setInterval(manifestNextMapIncense, 7000);
+}
+
 function initMap() {
   const container = $('mapContainer');
   if (!container) return;
@@ -1060,15 +1199,6 @@ function initMap() {
     attribution: '',
     subdomains: isDark ? 'abcd' : 'abc',
   }).addTo(mapInstance);
-
-  const markerClassMap = {
-    'Conflict': 'conflict',
-    'Restricted': 'restricted',
-    'Monitored': 'monitored',
-    'Disaster': 'disaster',
-    'Hunger': 'hunger',
-    'Displacement': 'displacement'
-  };
 
   try {
     const saved = localStorage.getItem('palal_map_counts');
@@ -1110,32 +1240,25 @@ function initMap() {
     });
 
     marker.bindPopup(`
-      <div style="font-size:11px;font-weight:400;color:var(--ink);">${profile.name}</div>
-      <div style="font-size:6px;letter-spacing:0.15em;text-transform:uppercase;color:${alert ? 'var(--ember)' : 'var(--gold-dim)'};margin-bottom:4px;">${alert ? alert.type : 'No active alerts'}</div>
-      <div style="font-size:8px;color:var(--ink-mid);margin-bottom:4px;">${profile.population.toLocaleString()} · ${profile.christian}% Christian</div>
-      <button onclick="openCountryModal('${code}')" style="width:100%;padding:6px 0;background:var(--gold);color:var(--bg);border:none;border-radius:99px;font-size:6px;cursor:pointer;">View full profile</button>
-      <button onclick="prayForCountry('${code}')" style="width:100%;padding:6px 0;background:var(--bg);color:var(--gold);border:0.5px solid var(--gold);border-radius:99px;font-size:6px;cursor:pointer;margin-top:3px;">Pray for this country</button>
-      <div style="font-size:6px;color:var(--gold-dim);text-align:center;margin-top:4px;">${prayerCount} prayers</div>
+      <div class="map-popup-title">${profile.name}</div>
+      <div class="map-popup-tag ${alert ? 'alert' : 'neutral'}">${alert ? alert.type : 'No active alerts'}</div>
+      <div class="map-popup-meta">${profile.population.toLocaleString()} · ${profile.christian}% Christian</div>
+      <button class="map-popup-btn" onclick="openCountryModal('${code}')">View full profile</button>
+      <button class="map-popup-btn secondary" onclick="prayForCountry('${code}')">Pray for this country</button>
+      <div class="map-popup-count">${prayerCount} prayers</div>
     `, { minWidth: 160, maxWidth: 200 });
   });
 
   // Prayer point markers
-  PRAYER_POINTS.forEach(point => {
-    const markerEl = document.createElement('div');
-    const count = mapCounts[point.id] || 0;
-    markerEl.className = 'custom-marker ' + (markerClassMap[point.level] || 'monitored') + (count > 0 ? ' has-prayers' : '');
-    const marker = L.marker([point.lat, point.lng], {
-      icon: L.divIcon({ html: markerEl.outerHTML, className: '', iconSize: [10, 10], iconAnchor: [5, 5] }),
-      riseOnHover: true,
-    }).addTo(mapInstance);
+  PRAYER_POINTS.forEach(point => addCrisisMarker(point));
 
-    marker.bindPopup(`
-      <div style="font-size:11px;font-weight:400;color:var(--ink);">${point.country}</div>
-      <div style="font-size:6px;letter-spacing:0.15em;text-transform:uppercase;color:var(--ember);margin-bottom:4px;">${point.level}</div>
-      <div style="font-size:8px;color:var(--ink-mid);font-style:italic;margin-bottom:8px;">"${point.prayer}"</div>
-      <button onclick="prayForMapPoint(${point.id})" style="width:100%;padding:6px 0;background:var(--gold);color:var(--bg);border:none;border-radius:99px;font-size:6px;cursor:pointer;">Pray for this</button>
-      <div style="font-size:6px;color:var(--gold-dim);text-align:center;margin-top:4px;">${count} intercessors</div>
-    `, { minWidth: 160, maxWidth: 200 });
+  // Live crisis markers (NASA EONET — refreshed daily, cached in localStorage)
+  loadLiveCrises().then(function(result) {
+    LIVE_CRISES = result.events;
+    renderLiveCrisisMarkers();
+    if (result.isFresh && result.events.length > 0) {
+      toast('🌍 New: ' + result.events[0].country + ' — pray for those affected');
+    }
   });
 
   // City markers
@@ -1169,7 +1292,7 @@ function initMap() {
     });
   });
 
-  if (navigator.geolocation && !homeCity) {
+  if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function(pos) {
       let nearest = null;
       let nearestDist = Infinity;
@@ -1183,18 +1306,30 @@ function initMap() {
           nearest = city;
         }
       });
-      if (nearest) {
+
+      // Only claim a "home" pin the first time — a returning user's chosen
+      // home city (or previously auto-detected one) is left alone.
+      if (!homeCity && nearest) {
         homeCity = nearest;
         D.homeCity = nearest;
         saveLocal();
-        setTimeout(function() {
-          mapInstance.setView([nearest.lat, nearest.lng], 10);
-          showCityOverlay(nearest);
-          updateHomeMarkers();
-        }, 1000);
       }
+
+      setTimeout(function() {
+        // Fly to the user's actual live coordinates, not just the nearest
+        // predefined city, so this reflects where they really are right now.
+        mapInstance.flyTo([pos.coords.latitude, pos.coords.longitude], 9, { duration: 1.4 });
+        if (homeCity) showCityOverlay(homeCity);
+        updateHomeMarkers();
+        resolveUserRegion(pos.coords.latitude, pos.coords.longitude).then(showRegionWelcome);
+      }, 1000);
     }, function() {
-      mapInstance.setView([20, 0], 2);
+      if (homeCity) {
+        mapInstance.setView([homeCity.lat, homeCity.lng], 10);
+      } else {
+        mapInstance.setView([20, 0], 2);
+      }
+      toast('Enable location to see facts about where you are');
     });
   } else if (homeCity) {
     setTimeout(function() {
@@ -1236,11 +1371,6 @@ window.prayForCountry = function(countryCode) {
   saveLocal();
   renderDNA();
 
-  D.globalCounter = (D.globalCounter || 12847) + 1;
-  saveLocal();
-  const counter = document.querySelector('.global-counter .num');
-  if (counter) counter.textContent = D.globalCounter.toLocaleString();
-
   toast('Prayed for ' + profile.name);
   vibrate();
 
@@ -1256,10 +1386,8 @@ window.prayForCountry = function(countryCode) {
 
   const mapPanel = $('mapPanel');
   const stageAxis = $('stageAxis');
-  const globalCounter = $('globalCounter');
   if (mapPanel) mapPanel.classList.add('hidden');
   if (stageAxis) stageAxis.classList.remove('hidden');
-  if (globalCounter) globalCounter.classList.add('hidden');
 
   const dnaPanel = $('dnaPanel');
   if (dnaPanel && dnaPanel.classList.contains('open')) {
@@ -1279,6 +1407,25 @@ window.prayForCountry = function(countryCode) {
 };
 
 // ─── CITY FUNCTIONS ─────────────────────────────
+function updateHomeLocatorPulse() {
+  if (!mapInstance || !homeCity) return;
+  if (homeLocatorMarker) {
+    mapInstance.removeLayer(homeLocatorMarker);
+    homeLocatorMarker = null;
+  }
+  const icon = L.divIcon({
+    html: '<div class="home-locator-pulse"><span class="pulse-ring"></span><span class="pulse-ring delay"></span><span class="pulse-core"></span></div>',
+    className: '',
+    iconSize: [1, 1],
+    iconAnchor: [0, 0]
+  });
+  homeLocatorMarker = L.marker([homeCity.lat, homeCity.lng], {
+    icon: icon,
+    interactive: false,
+    zIndexOffset: -100
+  }).addTo(mapInstance);
+}
+
 function updateHomeMarkers() {
   cityMarkers.forEach(function(item) {
     const isHome = homeCity && homeCity.name === item.city.name;
@@ -1297,6 +1444,7 @@ function updateHomeMarkers() {
       homeBadge.textContent = '';
     }
   }
+  updateHomeLocatorPulse();
 }
 
 function setHomeCity(city) {
@@ -1361,6 +1509,9 @@ if (closeOverlayBtn) {
   });
 }
 
+const regionWelcomeClose = document.getElementById('regionWelcomeClose');
+if (regionWelcomeClose) regionWelcomeClose.addEventListener('click', hideRegionWelcome);
+
 function enterPrayerWithCity() {
   if (!selectedCity && !D.currentCity) return;
 
@@ -1378,10 +1529,8 @@ function enterPrayerWithCity() {
 
   const mapPanel = $('mapPanel');
   const stageAxis = $('stageAxis');
-  const globalCounter = $('globalCounter');
   if (mapPanel) mapPanel.classList.add('hidden');
   if (stageAxis) stageAxis.classList.remove('hidden');
-  if (globalCounter) globalCounter.classList.add('hidden');
 
   hideCityOverlay();
 
@@ -1403,10 +1552,8 @@ function enterPrayerWithCity() {
 function exitPrayerToMap() {
   const mapPanel = $('mapPanel');
   const stageAxis = $('stageAxis');
-  const globalCounter = $('globalCounter');
   if (mapPanel) mapPanel.classList.remove('hidden');
   if (stageAxis) stageAxis.classList.add('hidden');
-  if (globalCounter) globalCounter.classList.remove('hidden');
   if (mapInstance) {
     setTimeout(function() { mapInstance.invalidateSize(); }, 300);
     if (!selectedCity) {
@@ -1441,18 +1588,67 @@ let progressRing = $('progressRing');
 let progressValue = 0;
 let progressInterval = null;
 
-function updateMode() {
-  const mode = MODES[currentModeIndex];
-  const modeIndicator = $('modeIndicator');
-  if (modeIndicator) {
-    modeIndicator.innerHTML = `<span class="symbol">${mode.symbol}</span> ${mode.name}`;
+function buildModeTrack() {
+  const track = $('modeTrack');
+  if (!track) return;
+  track.innerHTML = MODES.map(m => `<div class="mode-item"><span class="symbol">${m.symbol}</span>${m.name}</div>`).join('');
+}
+
+// ─── LIVE SCRIPTURE (bible-api.com) ─────────────
+const MODE_VERSE_REFS = {
+  petition: ['Matthew 7:7', 'Mark 11:24', 'Philippians 4:6', '1 John 5:14', 'Psalm 37:4'],
+  confession: ['1 John 1:9', 'Psalm 51:10', 'Proverbs 28:13', 'Psalm 51:1', 'Psalm 32:5'],
+  thanksgiving: ['1 Thessalonians 5:18', 'Psalm 107:1', 'Psalm 100:4', 'Colossians 3:17', 'Psalm 118:1'],
+  intercession: ['James 5:16', '1 Timothy 2:1', 'Ephesians 6:18', 'Romans 8:26', 'Colossians 4:2'],
+  lament: ['Psalm 130:1', 'Psalm 22:1', 'Psalm 13:1', 'Psalm 42:11', 'Psalm 6:6']
+};
+let lastScriptureRefByMode = {};
+let modeScriptureRequestId = 0;
+let currentStageScripture = null;
+
+async function fetchLiveScripture(modeName, fallback) {
+  const pool = MODE_VERSE_REFS[modeName] || [fallback.ref];
+  let ref = pool[Math.floor(Math.random() * pool.length)];
+  if (pool.length > 1 && ref === lastScriptureRefByMode[modeName]) {
+    ref = pool[(pool.indexOf(ref) + 1) % pool.length];
   }
+  lastScriptureRefByMode[modeName] = ref;
+  try {
+    const res = await fetch('https://bible-api.com/' + encodeURIComponent(ref) + '?translation=kjv');
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    const text = (data.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) throw new Error('empty verse');
+    return { verse: '"' + text + '"', ref: data.reference || ref };
+  } catch (e) {
+    return { verse: fallback.verse, ref: fallback.ref };
+  }
+}
+
+function displayModeScripture(verse, ref) {
+  currentStageScripture = { verse: verse, ref: ref };
   const verseText = $('verseText');
   const verseRef = $('verseRef');
+  if (verseText) {
+    verseText.dataset.originalText = verse;
+    verseText.textContent = replaceGodName(replaceMessiahName(verse));
+  }
+  if (verseRef) {
+    verseRef.dataset.originalText = ref;
+    verseRef.textContent = replaceGodName(replaceMessiahName(ref));
+  }
+}
+
+function updateMode() {
+  const mode = MODES[currentModeIndex];
+  const track = $('modeTrack');
+  const modeWindow = $('modeWindow');
+  if (track && modeWindow) {
+    track.style.transform = `translateX(${-currentModeIndex * modeWindow.getBoundingClientRect().width}px)`;
+  }
   const mainInput = $('mainInput');
   const nexusHint = $('nexusHint');
-  if (verseText) verseText.textContent = mode.verse;
-  if (verseRef) verseRef.textContent = mode.ref;
+  displayModeScripture(mode.verse, mode.ref);
   if (mainInput) mainInput.placeholder = mode.placeholder;
   if (mainInput) mainInput.value = '';
   if (nexusHint) nexusHint.textContent = mode.name === 'confession' ? 'hold to confess' : 'hold to enter';
@@ -1461,6 +1657,13 @@ function updateMode() {
     progressRing.style.strokeDashoffset = 421;
   }
   updateCharCounter();
+
+  const requestId = ++modeScriptureRequestId;
+  const modeAtRequest = currentModeIndex;
+  fetchLiveScripture(mode.name, { verse: mode.verse, ref: mode.ref }).then(function(result) {
+    if (requestId !== modeScriptureRequestId || currentModeIndex !== modeAtRequest) return;
+    displayModeScripture(result.verse, result.ref);
+  });
 }
 
 function updateCharCounter() {
@@ -1589,7 +1792,8 @@ function getScriptureForMode(mode) {
     intercession: ['"Pray for one another, that you may be healed."', 'James 5:16'],
     confession: ['"If we confess our sins, he is faithful and just."', '1 John 1:9']
   };
-  return map[mode] || ['"Be still, and know that I am God."', 'Psalm 46:10'];
+  const [verse, ref] = map[mode] || ['"Be still, and know that I am God."', 'Psalm 46:10'];
+  return [replaceGodName(replaceMessiahName(verse)), ref];
 }
 
 function renderModeMenu() {
@@ -1701,15 +1905,9 @@ function burnConfession(text) {
   }, 4000);
 }
 
-function hideAllAlerts() {
-  const ticker = document.getElementById('mapTicker');
-  if (ticker) ticker.style.display = 'none';
-}
+function hideAllAlerts() {}
 
-function showAllAlerts() {
-  const ticker = document.getElementById('mapTicker');
-  if (ticker) ticker.style.display = 'block';
-}
+function showAllAlerts() {}
 
 // ─── SANCTUARY ──────────────────────────────────
 function enterSanctuary(modeNameOverride) {
@@ -1732,13 +1930,31 @@ function enterSanctuary(modeNameOverride) {
       current.innerHTML = `<span class="symbol">${modeObj.symbol}</span> ${modeObj.name} <span class="caret">▾</span>`;
     }
   }
-  const scripture = getScriptureForMode(currentSanctuaryMode);
   const solVerse = $('solVerse');
   const solRef = $('solRef');
-  if (solVerse) solVerse.textContent = scripture[0];
-  if (solRef) solRef.textContent = scripture[1];
+  if (D._guidedActive && D._guidedPrayer && GUIDED_PRAYERS[D._guidedPrayer]) {
+    // A guided prayer is in progress — keep showing its current step,
+    // not the generic scripture for the sanctuary mode.
+    const gPrayer = GUIDED_PRAYERS[D._guidedPrayer];
+    const gScripture = gPrayer.scriptures[D._guidedStep || 0];
+    let gText = gScripture.text;
+    gText = replaceGodName(gText);
+    gText = replaceMessiahName(gText);
+    if (solVerse) solVerse.textContent = '"' + gText + '"';
+    if (solRef) solRef.textContent = '— ' + gScripture.ref;
+  } else if (!modeNameOverride && currentStageScripture) {
+    // Carry over the live scripture already showing on the stage carousel
+    // so it doesn't swap to a different one the instant sanctuary opens.
+    if (solVerse) solVerse.textContent = replaceGodName(replaceMessiahName(currentStageScripture.verse));
+    if (solRef) solRef.textContent = replaceGodName(replaceMessiahName(currentStageScripture.ref));
+  } else {
+    const scripture = getScriptureForMode(currentSanctuaryMode);
+    if (solVerse) solVerse.textContent = scripture[0];
+    if (solRef) solRef.textContent = scripture[1];
+  }
   renderModeMenu();
   updateSanctuaryForConfession(currentSanctuaryMode === 'confession');
+  updateSanctuaryGuidedNav();
 
   sanctuaryTimer = 0;
   const solTimer = $('solTimer');
@@ -1793,6 +2009,9 @@ function leaveSanctuary() {
 
 const leaveBtn = $('leaveBtn');
 if (leaveBtn) leaveBtn.addEventListener('click', leaveSanctuary);
+
+const sanctuaryGuidedNextBtn = $('sanctuaryGuidedNext');
+if (sanctuaryGuidedNextBtn) sanctuaryGuidedNextBtn.addEventListener('click', advanceSanctuaryGuidedStep);
 
 const sanctuary = $('sanctuary');
 if (sanctuary) {
@@ -1870,13 +2089,6 @@ function submitPrayer() {
   input.value = '';
   vibrate();
 
-  if (D.currentCity) {
-    D.globalCounter = (D.globalCounter || 12847) + 1;
-    saveLocal();
-    const counter = document.querySelector('.global-counter .num');
-    if (counter) counter.textContent = D.globalCounter.toLocaleString();
-  }
-
   enterSanctuary(mode.name);
 }
 
@@ -1895,7 +2107,7 @@ if (mainInputSubmit) {
 
 // ─── PRAY FOR MAP POINT ──────────────────────────
 window.prayForMapPoint = function(id) {
-  const point = PRAYER_POINTS.find(p => p.id === id);
+  const point = PRAYER_POINTS.find(p => p.id === id) || LIVE_CRISES.find(p => p.id === id);
   if (!point) {
     toast('Point not found');
     return;
@@ -1940,10 +2152,8 @@ window.prayForMapPoint = function(id) {
 
   const mapPanel = $('mapPanel');
   const stageAxis = $('stageAxis');
-  const globalCounter = $('globalCounter');
   if (mapPanel) mapPanel.classList.add('hidden');
   if (stageAxis) stageAxis.classList.remove('hidden');
-  if (globalCounter) globalCounter.classList.add('hidden');
 
   const dnaPanel = $('dnaPanel');
   if (dnaPanel && dnaPanel.classList.contains('open')) {
@@ -1980,32 +2190,26 @@ if (navWorld) {
       mapInstance.setView([20, 0], 2);
       setTimeout(() => mapInstance.invalidateSize(), 300);
     }
+    
     const dnaPanel = $('dnaPanel');
     const requestsPanel = $('requestsPanel');
-    if (dnaPanel && dnaPanel.classList.contains('open')) {
-      dnaPanel.classList.remove('open');
-    }
-    if (requestsPanel && requestsPanel.classList.contains('open')) {
-      requestsPanel.classList.remove('open');
-    }
+   // ─── ADD THIS ───
+    const tawPanel = document.getElementById('tawPanel');
+    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
+    if (requestsPanel && requestsPanel.classList.contains('open')) requestsPanel.classList.remove('open');
+    if (tawPanel && tawPanel.classList.contains('open')) tawPanel.classList.remove('open');
     hideCountryTooltip();
   });
 }
-
 const navPray = $('navPray');
 if (navPray) {
   navPray.addEventListener('click', function() {
     document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
     if (isSanctuaryActive) leaveSanctuary();
-    const dnaPanel = $('dnaPanel');
-    const requestsPanel = $('requestsPanel');
-    if (dnaPanel && dnaPanel.classList.contains('open')) {
-      dnaPanel.classList.remove('open');
-    }
-    if (requestsPanel && requestsPanel.classList.contains('open')) {
-      requestsPanel.classList.remove('open');
-    }
+    
+    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
+    if (requestsPanel && requestsPanel.classList.contains('open')) requestsPanel.classList.remove('open');
     if (!selectedCity && D.currentCity) {
       enterPrayerWithCity();
       return;
@@ -2029,9 +2233,12 @@ if (navDNA) {
     this.classList.add('active');
     if (isSanctuaryActive) leaveSanctuary();
     const requestsPanel = $('requestsPanel');
-    if (requestsPanel && requestsPanel.classList.contains('open')) {
-      requestsPanel.classList.remove('open');
+// ─── ADD THESE 3 LINES ───
+    const tawPanel = document.getElementById('tawPanel');
+    if (tawPanel && tawPanel.classList.contains('open')) {
+      tawPanel.classList.remove('open');
     }
+    // ─── END ADD ───    
     renderDNA();
     const dnaPanel = $('dnaPanel');
     if (dnaPanel) dnaPanel.classList.toggle('open');
@@ -2049,6 +2256,92 @@ if (closeDNA) {
   });
 }
 
+const APP_TEXT_SCALE_BY_SIZE = { small: 0.85, medium: 1, large: 1.15 };
+function applyAppTextSize(size) {
+  const scale = APP_TEXT_SCALE_BY_SIZE[size] || 1;
+  document.documentElement.style.setProperty('--app-text-scale', scale);
+  document.querySelectorAll('.dna-size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === size));
+  // Re-measure the mode carousel now that its font size may have changed.
+  const track = $('modeTrack');
+  const win = $('modeWindow');
+  if (track && win) track.style.transform = `translateX(${-currentModeIndex * win.getBoundingClientRect().width}px)`;
+}
+const dnaSizeToggle = $('dnaSizeToggle');
+if (dnaSizeToggle) {
+  dnaSizeToggle.addEventListener('click', function(e) {
+    const btn = e.target.closest('.dna-size-btn');
+    if (!btn) return;
+    D.appTextSize = btn.dataset.size;
+    saveLocal();
+    applyAppTextSize(D.appTextSize);
+  });
+}
+applyAppTextSize(D.appTextSize || 'medium');
+
+const dnaSearchInput = $('dnaSearchInput');
+if (dnaSearchInput) {
+  dnaSearchInput.addEventListener('input', function() {
+    dnaSearchQuery = dnaSearchInput.value;
+    renderDNA();
+  });
+}
+
+const dnaFilterRow = $('dnaFilterRow');
+if (dnaFilterRow) {
+  dnaFilterRow.addEventListener('click', function(e) {
+    const chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    dnaFilterRow.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    dnaModeFilter = chip.dataset.filter;
+    renderDNA();
+  });
+}
+
+const closeDnaDetailBtn = $('closeDnaDetail');
+if (closeDnaDetailBtn) closeDnaDetailBtn.addEventListener('click', closeDnaDetail);
+
+const dnaDetailAnsweredToggle = $('dnaDetailAnsweredToggle');
+if (dnaDetailAnsweredToggle) {
+  dnaDetailAnsweredToggle.addEventListener('click', function() {
+    dnaDetailPendingAnswered = !dnaDetailPendingAnswered;
+    updateDnaDetailAnsweredUI(dnaDetailPendingAnswered);
+  });
+}
+
+const dnaDetailPrayAgain = $('dnaDetailPrayAgain');
+if (dnaDetailPrayAgain) {
+  dnaDetailPrayAgain.addEventListener('click', function() {
+    if (dnaDetailId != null) prayEntryAgain(dnaDetailId);
+  });
+}
+
+const dnaDetailDelete = $('dnaDetailDelete');
+if (dnaDetailDelete) {
+  dnaDetailDelete.addEventListener('click', function() {
+    if (dnaDetailId == null) return;
+    deleteEntry(dnaDetailId);
+    closeDnaDetail();
+  });
+}
+
+const dnaDetailSave = $('dnaDetailSave');
+if (dnaDetailSave) {
+  dnaDetailSave.addEventListener('click', function() {
+    const entry = D.entries.find(e => e.id === dnaDetailId);
+    if (!entry) return;
+    const themeEl = $('dnaDetailTheme');
+    const testimonyEl = $('dnaDetailTestimony');
+    entry.theme = themeEl ? themeEl.value.trim().toLowerCase() : entry.theme;
+    entry.testimony = testimonyEl ? testimonyEl.value.trim() : entry.testimony;
+    entry.answered = dnaDetailPendingAnswered;
+    saveLocal();
+    renderDNA();
+    closeDnaDetail();
+    toast('Prayer updated');
+  });
+}
+
 const navRequests = $('navRequests');
 if (navRequests) {
   navRequests.addEventListener('click', function() {
@@ -2056,23 +2349,101 @@ if (navRequests) {
     this.classList.add('active');
     if (isSanctuaryActive) leaveSanctuary();
     const dnaPanel = $('dnaPanel');
-    if (dnaPanel && dnaPanel.classList.contains('open')) {
-      dnaPanel.classList.remove('open');
+// ─── ADD THESE 3 LINES ───
+    const tawPanel = document.getElementById('tawPanel');
+    if (tawPanel && tawPanel.classList.contains('open')) {
+      tawPanel.classList.remove('open');
     }
+    // ─── END ADD ───    
+    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
     renderRequests();
     const requestsPanel = $('requestsPanel');
     if (requestsPanel) requestsPanel.classList.toggle('open');
   });
-}
-
-const closeRequests = $('closeRequests');
+}// ─── CLOSE REQUESTS ──────────────────────────────
+const closeRequests = document.getElementById('closeRequests');
 if (closeRequests) {
   closeRequests.addEventListener('click', function() {
-    const requestsPanel = $('requestsPanel');
-    if (requestsPanel) requestsPanel.classList.remove('open');
+    const requestsPanel = document.getElementById('requestsPanel');
+    if (requestsPanel) {
+      requestsPanel.classList.remove('open');
+    }
+    // Reset dock highlighting
     document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
-    const navWorld2 = $('navWorld');
-    if (navWorld2) navWorld2.classList.add('active');
+    const navWorld = document.getElementById('navWorld');
+    if (navWorld) navWorld.classList.add('active');
+  });
+}
+
+// ─── ADD THIS ENTIRE BLOCK ───
+// ─── CLOSE TAW BUTTON ────────────────────────────
+const closeTaw = document.getElementById('closeTaw');
+if (closeTaw) {
+  closeTaw.addEventListener('click', function() {
+    const tawPanel = document.getElementById('tawPanel');
+    if (tawPanel) {
+      tawPanel.classList.remove('open');
+      tawPanel.style.display = 'none';
+      tawPanel.style.pointerEvents = 'none';
+    }
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    const navWorld = document.getElementById('navWorld');
+    if (navWorld) navWorld.classList.add('active');
+  });
+}
+// ─── END ADD ───
+
+// ─── TAW NAVIGATION ─────────────────────────────
+const navTaw = document.getElementById('navTaw');
+if (navTaw) {
+  navTaw.addEventListener('click', async function() {
+    // Close sanctuary if open
+    if (isSanctuaryActive) leaveSanctuary();
+    
+    // Close other panels
+    const dnaPanel = document.getElementById('dnaPanel');
+    const requestsPanel = document.getElementById('requestsPanel');
+    const guidedPanel = document.getElementById('guidedPanel');
+    const tawPanel = document.getElementById('tawPanel');
+    
+    if (dnaPanel) dnaPanel.classList.remove('open');
+    if (requestsPanel) requestsPanel.classList.remove('open');
+    if (guidedPanel) guidedPanel.classList.remove('open');
+    
+    // Toggle TAW
+    if (tawPanel) {
+      const isOpen = tawPanel.classList.contains('open');
+      
+      if (isOpen) {
+        // Close TAW
+        tawPanel.classList.remove('open');
+        tawPanel.style.display = 'none';
+        tawPanel.style.pointerEvents = 'none';
+      } else {
+        // Open TAW
+        tawPanel.style.display = 'block';
+        tawPanel.style.pointerEvents = 'auto';
+        tawPanel.classList.add('open');
+        
+        // Initialize the game - CRITICAL FIX
+        const tawWordEl = document.getElementById('tawWord');
+        if (tawWordEl) tawWordEl.textContent = 'Loading…';
+        window.TAW_NAMES = await window.getTawNames();
+        window.rebuildTawIndexes();
+        window.tawTeardown();
+        window.tawInitMode('chain');
+        window.syncTawUI();
+        // Focus the input
+        const tawInput = document.getElementById('tawInput');
+        if (tawInput) {
+          setTimeout(() => tawInput.focus(), 300);
+        }
+      }
+      
+      // Update dock
+      document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+    }
   });
 }
 
@@ -2107,46 +2478,131 @@ if (legendToggle && legendContent) {
   });
 }
 
-// ─── TUTORIAL ─────────────────────────────────────
-let currentTutStep = 0;
-const TUTORIAL_TOTAL = 5;
+// ─── TUTORIAL — SPOTLIGHT WALKTHROUGH ───────────
 const TUTORIAL_SEEN_KEY = 'palal_tutorial_seen_v4';
 
-function showTutStep(n) {
-  for (let i = 0; i < TUTORIAL_TOTAL; i++) {
-    const step = document.getElementById('tutStep' + i);
-    const dot = document.getElementById('tutDot' + i);
-    if (step) step.classList.toggle('active', i === n);
-    if (dot) dot.classList.toggle('active', i === n);
-  }
-  const nextBtn = document.getElementById('tutNext');
-  if (nextBtn) {
-    nextBtn.textContent = n === TUTORIAL_TOTAL - 1 ? 'Start Praying ✦' : 'Next →';
-  }
-  currentTutStep = n;
-}
+(function() {
+  const STEPS = [
+    { target: null, pos: 'center', icon: '✦', title: 'Welcome to Palal', body: 'A sacred space to pray, listen, and stand in the gap. Let\'s take a quick look around.' },
+    { target: '#modeWindow', pos: 'below', icon: '◈', title: 'Choose your mode', body: 'Petition, Lament, Thanksgiving, Adoration, or Confession — swipe to choose how you come before God today.' },
+    { target: '#nexusBtn', pos: 'below', icon: '✦', title: 'Hold to enter', body: 'Type your prayer, then press and hold the circle until it fills. You\'ll enter the Sanctuary — a still space with rotating scripture.' },
+    { target: '#scriptureBlock', pos: 'above', icon: '✦', title: 'Living scripture', body: 'A verse aligned with your current mode appears here. Tap it any time for a new one.' },
+    { target: '#mainInput', pos: 'above', icon: '✦', title: 'Lay it down', body: 'Type what\'s on your heart, then hold the circle to lift it in prayer. Every prayer is saved to your DNA.' },
+    { target: '#navWorld', pos: 'above', icon: '◉', title: 'World', body: 'See persecuted nations, conflict zones, and live global crises on the map. Tap any dot to pray for that place.' },
+    { target: '#navDNA', pos: 'above', icon: '✦', title: 'Prayer DNA', body: 'Your full prayer journal. Link prayers by theme to see how your prayer life connects and grows over time.' },
+    { target: '#navRequests', pos: 'above', icon: '✦', title: 'Requests', body: 'Keep a living list of the people and needs you\'re carrying. Tap a request to enter Sanctuary for it.' },
+    { target: '#navTaw', pos: 'above', icon: '✦', title: 'TAW', body: 'A Bible-name word game, right inside your prayer time — a playful way to build scripture familiarity.' },
+    { target: null, pos: 'center', icon: '✦', title: 'You\'re ready', body: 'Begin with what\'s on your heart. Palal will hold it and help you see how God answers over time.' }
+  ];
 
-function closeTutorial() {
-  const overlay = document.getElementById('tutorialOverlay');
-  if (overlay) overlay.classList.remove('active');
-  localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
-}
+  let step = 0;
+  let built = false;
+  let backdrop, spotlight, pulse, card;
 
-const tutNext = document.getElementById('tutNext');
-if (tutNext) {
-  tutNext.addEventListener('click', function() {
-    if (currentTutStep < TUTORIAL_TOTAL - 1) {
-      showTutStep(currentTutStep + 1);
-    } else {
-      closeTutorial();
+  function build() {
+    if (built) return;
+    backdrop = document.createElement('div'); backdrop.className = 'tut-backdrop';
+    spotlight = document.createElement('div'); spotlight.className = 'tut-spotlight';
+    pulse = document.createElement('div'); pulse.className = 'tut-pulse';
+    card = document.createElement('div'); card.className = 'tut-card';
+    card.innerHTML = '<div class="tut-step-row"><div class="tut-step-pips" id="tutPips"></div><button class="tut-skip" id="tutSkip">skip tour</button></div><div class="tut-icon" id="tutIcon"></div><div class="tut-title" id="tutTitle"></div><div class="tut-body" id="tutBody"></div><div class="tut-footer"><button class="tut-back" id="tutBack">Back</button><button class="tut-next" id="tutNext">Next</button></div>';
+    document.body.appendChild(backdrop);
+    document.body.appendChild(spotlight);
+    document.body.appendChild(pulse);
+    document.body.appendChild(card);
+    document.getElementById('tutNext').addEventListener('click', function() {
+      if (step < STEPS.length - 1) { step++; renderStep(); } else { closeTutorial(); }
+    });
+    document.getElementById('tutBack').addEventListener('click', function() {
+      if (step > 0) { step--; renderStep(); }
+    });
+    document.getElementById('tutSkip').addEventListener('click', closeTutorial);
+    window.addEventListener('resize', function() {
+      if (card.style.display !== 'none') renderStep();
+    });
+    built = true;
+  }
+
+  function renderStep() {
+    const s = STEPS[step];
+    const isLast = step === STEPS.length - 1;
+
+    const pips = document.getElementById('tutPips');
+    if (pips) {
+      pips.innerHTML = STEPS.map(function(_, i) {
+        let cls = 'tut-pip';
+        if (i < step) cls += ' done';
+        if (i === step) cls += ' active';
+        return '<div class="' + cls + '"></div>';
+      }).join('');
     }
-  });
-}
+    document.getElementById('tutIcon').textContent = s.icon || '';
+    document.getElementById('tutTitle').textContent = s.title;
+    document.getElementById('tutBody').textContent = s.body;
+    document.getElementById('tutNext').textContent = isLast ? 'Begin' : 'Next →';
+    document.getElementById('tutBack').style.visibility = step === 0 ? 'hidden' : 'visible';
 
-const tutSkip = document.getElementById('tutSkip');
-if (tutSkip) {
-  tutSkip.addEventListener('click', closeTutorial);
-}
+    const vw = window.innerWidth, vh = window.innerHeight, cw = 272, ch = 220;
+
+    if (!s.target || s.pos === 'center') {
+      spotlight.style.cssText = 'top:50%;left:50%;width:0;height:0;border-radius:50%;box-shadow:0 0 0 9999px rgba(0,0,0,0.65);';
+      pulse.style.display = 'none';
+      card.style.left = ((vw - cw) / 2) + 'px';
+      card.style.top = ((vh - ch) / 2 - 20) + 'px';
+      return;
+    }
+
+    const el = document.querySelector(s.target);
+    if (!el) { step < STEPS.length - 1 ? (step++, renderStep()) : closeTutorial(); return; }
+    const r = el.getBoundingClientRect();
+    const pad = 10;
+    const isCircle = el.id === 'nexusBtn';
+    spotlight.className = 'tut-spotlight' + (isCircle ? ' circle' : '');
+    spotlight.style.top = (r.top - pad) + 'px';
+    spotlight.style.left = (r.left - pad) + 'px';
+    spotlight.style.width = (r.width + pad * 2) + 'px';
+    spotlight.style.height = (r.height + pad * 2) + 'px';
+    spotlight.style.boxShadow = '0 0 0 9999px rgba(0,0,0,0.65)';
+
+    if (isCircle) {
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2, pr = Math.max(r.width, r.height) / 2 + pad + 4;
+      pulse.style.cssText = 'display:block;width:' + (pr * 2) + 'px;height:' + (pr * 2) + 'px;top:' + (cy - pr) + 'px;left:' + (cx - pr) + 'px;border-radius:50%;';
+    } else {
+      pulse.style.display = 'none';
+    }
+
+    const spaceBelow = vh - r.bottom - 20, spaceAbove = r.top - 20;
+    let cardTop = Math.max(20, Math.min(r.top - ch - 32, vh - ch - 60));
+    if (s.pos === 'above' && spaceAbove > ch + 40) cardTop = r.top - ch - 32;
+    else if (spaceBelow > ch + 40) cardTop = r.bottom + 28;
+    else if (spaceAbove > ch + 40) cardTop = r.top - ch - 32;
+    card.style.left = Math.max(12, Math.min(r.left + r.width / 2 - cw / 2, vw - cw - 12)) + 'px';
+    card.style.top = Math.max(20, cardTop) + 'px';
+  }
+
+  function startTutorial() {
+    build();
+    step = 0;
+    card.style.display = 'block';
+    spotlight.style.display = 'block';
+    backdrop.style.opacity = '1';
+    backdrop.style.pointerEvents = 'auto';
+    renderStep();
+  }
+
+  function closeTutorial() {
+    if (!built) return;
+    card.style.display = 'none';
+    spotlight.style.display = 'none';
+    pulse.style.display = 'none';
+    backdrop.style.opacity = '0';
+    backdrop.style.pointerEvents = 'none';
+    try { localStorage.setItem(TUTORIAL_SEEN_KEY, '1'); } catch (e) {}
+  }
+
+  window.startTutorial = startTutorial;
+  window.closeTutorial = closeTutorial;
+})();
 
 // ─── SIGN IN / LOGOUT ────────────────────────────
 const signInGoogle = $('signInGoogle');
@@ -2159,11 +2615,11 @@ if (signInGoogle) {
 const logoutBtn = $('logoutBtn');
 if (logoutBtn) {
   logoutBtn.addEventListener('click', function() {
-    toast('Logged out');
+    toast('Signed out');
     const userInfo = $('userInfo');
     const signInGoogle2 = $('signInGoogle');
-    if (userInfo) userInfo.style.display = 'none';
-    if (signInGoogle2) signInGoogle2.style.display = 'block';
+    if (userInfo) userInfo.classList.remove('show');
+    if (signInGoogle2) signInGoogle2.style.display = '';
   });
 }
 
@@ -2373,12 +2829,8 @@ function initSettings() {
   if (replayBtn) {
     replayBtn.addEventListener('click', function() {
       closeSettings();
-      localStorage.removeItem('palal_tutorial_seen_v4');
-      const overlay = document.getElementById('tutorialOverlay');
-      if (overlay) {
-        overlay.classList.add('active');
-        showTutStep(0);
-      }
+      localStorage.removeItem(TUTORIAL_SEEN_KEY);
+      startTutorial();
     });
   }
 }
@@ -2438,13 +2890,7 @@ function prayWithOthers(countryName) {
   updateStreak();
   saveLocal();
   renderDNA();
-  
-  D.globalCounter = (D.globalCounter || 12847) + 1;
-  saveLocal();
-  
-  const counter = document.querySelector('.global-counter .num');
-  if (counter) counter.textContent = D.globalCounter.toLocaleString();
-  
+
   toast('🤝 Praying with others for ' + countryName);
   vibrate();
 }
@@ -2519,7 +2965,7 @@ const GUIDED_PRAYERS = {
     ]
   },
   messiah: {
-    name: "Messiah's Guide",
+    name: "The Lord's Prayer",
     icon: '☩',
     scriptures: [
       { text: 'Our Father in heaven, hallowed be your name.', ref: 'Matthew 6:9' },
@@ -2528,6 +2974,18 @@ const GUIDED_PRAYERS = {
       { text: 'And forgive us our debts, as we also have forgiven our debtors.', ref: 'Matthew 6:12' },
       { text: 'And lead us not into temptation, but deliver us from evil.', ref: 'Matthew 6:13' },
       { text: 'For yours is the kingdom, and the power, and the glory, forever. Amen.', ref: 'Matthew 6:13' }
+    ]
+  },
+  solomon: {
+    name: 'Prayer of Solomon',
+    icon: '♛',
+    scriptures: [
+      { text: 'O LORD my God, you have made your servant king in place of David my father, although I am but a little child. I do not know how to go out or come in.', ref: '1 Kings 3:7' },
+      { text: 'Give your servant an understanding heart to judge your people, and to discern between good and evil. For who is able to judge this great people of yours?', ref: '1 Kings 3:9' },
+      { text: 'Because you have asked this, and have not asked for yourself long life or riches or the life of your enemies, but have asked for yourself understanding to discern what is right, behold, I now do according to your word.', ref: '1 Kings 3:11-12' },
+      { text: 'But will God indeed dwell with man on the earth? Behold, heaven and the highest heaven cannot contain you, how much less this house that I have built!', ref: '2 Chronicles 6:18' },
+      { text: 'Now, O my God, let your eyes be open and your ears attentive to the prayer of this place.', ref: '2 Chronicles 6:40' },
+      { text: 'O LORD God, do not turn away the face of your anointed one! Remember your steadfast love for David your servant.', ref: '2 Chronicles 6:42' }
     ]
   }
 };
@@ -2539,14 +2997,16 @@ let guidedTotalSteps = 0;
 // ─── ENTER GUIDED PRAYER DIRECTLY ──────────────
 function enterGuidedPrayer(prayerId) {
   if (!GUIDED_PRAYERS[prayerId]) return;
-  
-  // Set current guided prayer
+
+  // Set current guided prayer — resume where we left off if this prayer
+  // is already active, instead of restarting it from step 0.
+  const resuming = D._guidedActive && D._guidedPrayer === prayerId;
   currentGuidedPrayer = prayerId;
-  currentGuidedStep = 0;
-  
+  currentGuidedStep = resuming ? (D._guidedStep || 0) : 0;
+
   // Get the prayer data
   const prayer = GUIDED_PRAYERS[prayerId];
-  const scripture = prayer.scriptures[0];
+  const scripture = prayer.scriptures[currentGuidedStep];
   
   // Replace names in scripture
   let text = scripture.text;
@@ -2567,16 +3027,17 @@ function enterGuidedPrayer(prayerId) {
   document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
   const navWorld2 = $('navWorld');
   if (navWorld2) navWorld2.classList.add('active');
-  
-  // Enter sanctuary
-  enterSanctuary('petition');
-  
-  // Store guided state
+
+  // Store guided state (must be set before enterSanctuary() so it knows
+  // to keep showing this guided step instead of a generic mode scripture)
   D._guidedActive = true;
   D._guidedPrayer = prayerId;
-  D._guidedStep = 0;
+  D._guidedStep = currentGuidedStep;
   saveLocal();
-  
+
+  // Enter sanctuary
+  enterSanctuary('petition');
+
   // Update the guided panel display (for when reopened)
   renderGuidedPrayers();
   
@@ -2675,19 +3136,89 @@ function prevGuidedStep() {
     
     D._guidedStep = currentGuidedStep;
     saveLocal();
-    
+
     renderGuidedPrayers();
   }
 }
+
+// ─── ADVANCE GUIDED PRAYER FROM WITHIN SANCTUARY ─
+function advanceSanctuaryGuidedStep() {
+  if (!D._guidedActive || !D._guidedPrayer || !GUIDED_PRAYERS[D._guidedPrayer]) return;
+
+  const prayer = GUIDED_PRAYERS[D._guidedPrayer];
+  const total = prayer.scriptures.length;
+  const step = D._guidedStep || 0;
+
+  if (step < total - 1) {
+    const nextStep = step + 1;
+    const scripture = prayer.scriptures[nextStep];
+    let text = scripture.text;
+    text = replaceGodName(text);
+    text = replaceMessiahName(text);
+
+    const solVerse = $('solVerse');
+    const solRef = $('solRef');
+    if (solVerse) solVerse.textContent = '"' + text + '"';
+    if (solRef) solRef.textContent = '— ' + scripture.ref;
+
+    currentGuidedPrayer = D._guidedPrayer;
+    currentGuidedStep = nextStep;
+    D._guidedStep = nextStep;
+    saveLocal();
+    renderGuidedPrayers();
+  } else {
+    D._guidedActive = false;
+    D._guidedPrayer = null;
+    D._guidedStep = 0;
+    saveLocal();
+    toast('✦ Guided prayer complete');
+    renderGuidedPrayers();
+  }
+
+  updateSanctuaryGuidedNav();
+}
+window.advanceSanctuaryGuidedStep = advanceSanctuaryGuidedStep;
+
+// ─── SYNC SANCTUARY NEXT-STEP BUTTON ─────────────
+function updateSanctuaryGuidedNav() {
+  const btn = $('sanctuaryGuidedNext');
+  if (!btn) return;
+
+  if (D._guidedActive && D._guidedPrayer && GUIDED_PRAYERS[D._guidedPrayer]) {
+    const total = GUIDED_PRAYERS[D._guidedPrayer].scriptures.length;
+    const step = D._guidedStep || 0;
+    btn.classList.add('visible');
+    btn.textContent = (step < total - 1) ? `Next · ${step + 2} / ${total}` : 'Amen';
+  } else {
+    btn.classList.remove('visible');
+    btn.textContent = '';
+  }
+}
+window.updateSanctuaryGuidedNav = updateSanctuaryGuidedNav;
 
 // ─── PRAY GUIDED PRAYER ─────────────────────────
 function prayGuidedPrayer() {
   const prayer = GUIDED_PRAYERS[currentGuidedPrayer];
   const scripture = prayer.scriptures[currentGuidedStep];
-  
+
   let text = scripture.text;
   text = replaceGodName(text);
   text = replaceMessiahName(text);
+
+  // Mark this prayer as the active guided prayer, then enter the Sanctuary
+  // so the rest of the guided flow happens in the immersive view.
+  D._guidedActive = true;
+  D._guidedPrayer = currentGuidedPrayer;
+  D._guidedStep = currentGuidedStep;
+  saveLocal();
+
+  const panel = $('guidedPanel');
+  if (panel) panel.classList.remove('open');
+  document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+  const navWorld3 = $('navWorld');
+  if (navWorld3) navWorld3.classList.add('active');
+
+  if (!isSanctuaryActive) enterSanctuary('petition');
 
   const entry = {
     id: Date.now(),
@@ -2706,11 +3237,6 @@ function prayGuidedPrayer() {
   updateStreak();
   saveLocal();
   renderDNA();
-
-  D.globalCounter = (D.globalCounter || 12847) + 1;
-  saveLocal();
-  const counter = document.querySelector('.global-counter .num');
-  if (counter) counter.textContent = D.globalCounter.toLocaleString();
 
   toast('✦ Guided prayer lifted');
   vibrate();
@@ -2871,15 +3397,12 @@ function updatePresetHighlight() {
 document.addEventListener('DOMContentLoaded', function() {
   applyTheme(D.theme || 'light');
 
+  buildModeTrack();
   updateMode();
   renderDNA();
   renderRequests();
   initMap();
-
-  const counter = document.querySelector('.global-counter .num');
-  if (counter && D.globalCounter) {
-    counter.textContent = D.globalCounter.toLocaleString();
-  }
+  initMapIncenseFeed();
 
   if (D.confessions) {
     D.confessions.forEach(() => addAshMark());
@@ -2915,13 +3438,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Show tutorial on first launch
-  if (!localStorage.getItem('palal_tutorial_seen_v4')) {
+  if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) {
     setTimeout(function() {
-      const overlay = document.getElementById('tutorialOverlay');
-      if (overlay) {
-        overlay.classList.add('active');
-        showTutStep(0);
-      }
+      startTutorial();
     }, 600);
   }
 
@@ -2934,6 +3453,16 @@ window.addEventListener('resize', function() {
   if (mapInstance) {
     setTimeout(() => mapInstance.invalidateSize(), 200);
   }
+  // ─── CLICK OUTSIDE TO CLOSE CITY OVERLAY ───
+  document.addEventListener('click', (e) => {
+    const overlay = document.getElementById('cityOverlay');
+    if (overlay && overlay.classList.contains('show')) {
+      // If click is outside the overlay and outside map markers, close it
+      if (!overlay.contains(e.target) && !e.target.closest('.leaflet-marker-icon')) {
+        overlay.classList.remove('show');
+      }
+    }
+  });
 });
 
 
@@ -2954,15 +3483,601 @@ window.replaceGodName = replaceGodName;
 window.updateGodNameInUI = updateGodNameInUI;
 window.prayWithOthers = prayWithOthers;
 window.replayTutorial = function() {
-  localStorage.removeItem('palal_tutorial_seen_v4');
-  const overlay = document.getElementById('tutorialOverlay');
-  if (overlay) {
-    overlay.classList.add('active');
-    showTutStep(0);
-  }
+  localStorage.removeItem(TUTORIAL_SEEN_KEY);
+  startTutorial();
 };
 window.selectGuidedPrayer = selectGuidedPrayer;
 window.nextGuidedStep = nextGuidedStep;
 window.prevGuidedStep = prevGuidedStep;
 window.prayGuidedPrayer = prayGuidedPrayer;
+// ═══════════════════════════════════════════════
+//  TAW — Bible Name Game (Integrated)
+//  Uses Palal's design tokens and toast system
+// ═══════════════════════════════════════════════
+
+(function() {
+  'use strict';
+
+  // ─── TAW DOM REFS ─────────────────────────────
+  const tawPanel = document.getElementById('tawPanel');
+  const tawWord = document.getElementById('tawWord');
+  const tawSub = document.getElementById('tawSub');
+  const tawInput = document.getElementById('tawInput');
+  const tawReqLetter = document.getElementById('tawReqLetter');
+  const tawReqCount = document.getElementById('tawReqCount');
+  const tawScore = document.getElementById('tawScore');
+  const tawStrikeDots = document.querySelectorAll('.taw-strike-dot');
+  const tawModesMenu = document.getElementById('tawModesMenu');
+  const tawModeChips = document.querySelectorAll('.taw-mode-chip');
+  const tawGameOver = document.getElementById('tawGameOver');
+  const tawGoTitle = document.getElementById('tawGoTitle');
+  const tawGoSub = document.getElementById('tawGoSub');
+  const tawGoPoints = document.getElementById('tawGoPoints');
+  const tawGoNames = document.getElementById('tawGoNames');
+  const tawGoBooks = document.getElementById('tawGoBooks');
+  const tawGoStreak = document.getElementById('tawGoStreak');
+  const tawGoBtn = document.getElementById('tawGoBtn');
+
+  const tawHintBtn = document.getElementById('tawHintBtn');
+  const tawSkipBtn = document.getElementById('tawSkipBtn');
+  const tawModesBtn = document.getElementById('tawModesBtn');
+// ─── BIBLE NAMES DATA ────────────────────────────
+// taw-names.json: 1,814 biblical names mapped to the books they appear in,
+// derived from theographic-bible-metadata (CC BY-SA 4.0, robertrouse/theographic-bible-metadata).
+
+const TAW_BACKUP_NAMES = {
+  "adam":["Genesis"], "eve":["Genesis"], "noah":["Genesis"], "abraham":["Genesis"],
+  "sarah":["Genesis"], "isaac":["Genesis"], "jacob":["Genesis"], "joseph":["Genesis"],
+  "moses":["Exodus"], "aaron":["Exodus"], "joshua":["Joshua"], "ruth":["Ruth"],
+  "samuel":["1 Samuel"], "saul":["1 Samuel"], "david":["1 Samuel"], "solomon":["1 Kings"],
+  "elijah":["1 Kings"], "elisha":["2 Kings"], "esther":["Esther"], "job":["Job"],
+  "isaiah":["Isaiah"], "jeremiah":["Jeremiah"], "daniel":["Daniel"], "jonah":["Jonah"],
+  "mary":["Luke"], "john":["John"], "peter":["Matthew"], "paul":["Acts"],
+  "timothy":["1 Timothy"], "james":["James"], "jude":["Jude"]
+};
+
+async function loadBibleNames() {
+  const response = await fetch('taw-names.json');
+  if (!response.ok) throw new Error('Failed to load taw-names.json: ' + response.status);
+  const data = await response.json();
+  if (!data || Object.keys(data).length < 20) throw new Error('taw-names.json returned too few names');
+  return data;
+}
+
+async function getTawNames() {
+  try {
+    return await loadBibleNames();
+  } catch (e) {
+    console.warn('TAW: using backup name list —', e.message);
+    return TAW_BACKUP_NAMES;
+  }
+}
+window.getTawNames = getTawNames;
+  // ─── TAW STATE ──────────────────────────────────
+  const TAW_BOOKS = [
+    "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy",
+    "Joshua", "Judges", "Ruth", "1 Samuel", "2 Samuel", "1 Kings", "2 Kings",
+    "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah", "Esther", "Job",
+    "Psalms", "Proverbs", "Ecclesiastes", "Song of Solomon", "Isaiah",
+    "Jeremiah", "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos",
+    "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai",
+    "Zechariah", "Malachi", "Matthew", "Mark", "Luke", "John", "Acts",
+    "Romans", "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians",
+    "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians",
+    "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James",
+    "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"
+  ];
+
+  const SHORT_BOOKS = new Set([
+    'Obadiah', 'Jude', 'Jonah', 'Nahum', 'Habakkuk', 'Zephaniah',
+    'Haggai', 'Malachi', 'Philemon', '2 John', '3 John', 'Ruth', 'Esther'
+  ]);
+
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+  // ─── TAW NAME DATABASE ──────────────────────────
+  // Populated at runtime via getTawNames() (API with local backup)
+  let TAW_NAMES = {};
+
+  // Build indexes
+  const tawNameIndexByLetter = {};
+  const tawNameIndexByBook = {};
+
+  function rebuildTawIndexes() {
+    ALPHABET.forEach(l => tawNameIndexByLetter[l.toLowerCase()] = []);
+    TAW_BOOKS.forEach(b => tawNameIndexByBook[b] = []);
+
+    for (const [name, books] of Object.entries(TAW_NAMES)) {
+      const firstLetter = name.charAt(0).toLowerCase();
+      if (tawNameIndexByLetter[firstLetter]) tawNameIndexByLetter[firstLetter].push(name);
+      books.forEach(book => {
+        if (tawNameIndexByBook[book]) tawNameIndexByBook[book].push(name);
+      });
+    }
+  }
+  window.rebuildTawIndexes = rebuildTawIndexes;
+
+  // ─── TAW MODES ──────────────────────────────────
+  const TAW_MODES = {
+    CHAIN: 'chain',
+    STORM: 'storm',
+    COLLECTOR: 'collector',
+    ALPHABET: 'alphabet',
+    TIMEATTACK: 'timeattack'
+  };
+
+  const STARTER_NAMES = ["Adam", "Abraham", "Moses", "David", "Isaiah", "Daniel", "Peter", "Paul", "Ruth", "John"];
+
+  // ─── TAW GAME STATE ─────────────────────────────
+  let tawGameActive = false;
+  let tawCurrentMode = TAW_MODES.CHAIN;
+  let tawCurrentName = "";
+  let tawUsedNames = new Set();
+  let tawUsedNameList = [];
+  let tawCompletedBooks = new Set();
+  let tawBookContribution = {};
+  let tawStrikes = 0;
+  let tawStreak = 0;
+  let tawPoints = 0;
+  let tawSkips = 3;
+  let tawHints = 3;
+  let tawAlphabetIndex = 0;
+  let tawStormLetter = '';
+  let tawCollectorIndex = 0;
+  let tawTimer = 60;
+  let tawTimerInterval = null;
+  let tawDeadEndLetter = null;
+  let tawLastBook = null;
+  let tawSameBookCount = 0;
+  let tawIsTimeAttack = false;
+
+  // ─── TAW HELPERS ────────────────────────────────
+  function getTawEntryBooks(nameLower) {
+    return TAW_NAMES[nameLower] || null;
+  }
+
+  function getTawTargetBook(nameLower, completed) {
+    const books = getTawEntryBooks(nameLower);
+    if (!books) return null;
+    for (let i = 0; i < books.length; i++) {
+      if (!completed.has(books[i])) return books[i];
+    }
+    return books[0];
+  }
+
+  function getTawChainLetter(name, deadEnd) {
+    if (deadEnd) return deadEnd;
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    let letter = lower.slice(-1);
+    if (lower.endsWith('ah')) letter = 'a';
+    return letter;
+  }
+
+ // ─── TAW SYNC UI ─────────────────────────────────
+function syncTawUI() {
+  // Update the main word display
+  tawWord.textContent = tawCurrentName || 'TAW';
+  tawWord.classList.remove('pop');
+  if (tawCurrentName) setTimeout(() => tawWord.classList.add('pop'), 10);
+
+  // Update the sub title (book name)
+  if (tawCurrentName) {
+    const book = getTawTargetBook(tawCurrentName.toLowerCase(), tawCompletedBooks);
+    tawSub.textContent = book ? book : 'Complete';
+  } else {
+    tawSub.textContent = '—';
+  }
+
+  // Update score
+  tawScore.textContent = `${tawCompletedBooks.size} / 66`;
+
+  // Update requirement display
+  let reqChar = '—';
+  let countText = '0 remaining';
+  
+  if (tawCurrentMode === TAW_MODES.CHAIN && tawCurrentName) {
+    reqChar = getTawChainLetter(tawCurrentName, tawDeadEndLetter);
+    if (reqChar && tawNameIndexByLetter[reqChar]) {
+      const rem = tawNameIndexByLetter[reqChar].filter(n => !tawUsedNames.has(n)).length || 0;
+      countText = `${rem} remaining`;
+    } else {
+      countText = 'No names available';
+    }
+  } else if (tawCurrentMode === TAW_MODES.STORM) {
+    reqChar = tawStormLetter || '?';
+    if (tawNameIndexByLetter[reqChar]) {
+      const rem = tawNameIndexByLetter[reqChar].filter(n => !tawUsedNames.has(n)).length || 0;
+      countText = `${rem} remaining`;
+    } else {
+      countText = 'No names available';
+    }
+  } else if (tawCurrentMode === TAW_MODES.COLLECTOR) {
+    reqChar = '◆';
+    countText = TAW_BOOKS[tawCollectorIndex] || 'Complete';
+  } else if (tawCurrentMode === TAW_MODES.ALPHABET) {
+    reqChar = ALPHABET[tawAlphabetIndex] || '✓';
+    countText = tawAlphabetIndex >= ALPHABET.length ? 'Complete' : `${26 - tawAlphabetIndex} left`;
+  } else if (tawCurrentMode === TAW_MODES.TIMEATTACK) {
+    reqChar = '◈';
+    countText = `${tawTimer}s`;
+  }
+  
+  tawReqLetter.textContent = typeof reqChar === 'string' ? reqChar.toUpperCase() : reqChar;
+  tawReqCount.textContent = countText;
+
+  // Update strike dots
+  tawStrikeDots.forEach((dot, idx) => {
+    dot.className = 'taw-strike-dot';
+    if (idx < tawStrikes) {
+      dot.classList.add('filled');
+      if (idx === tawStrikes - 1) dot.classList.add('danger');
+    }
+  });
+
+   // Modes
+  tawModeChips.forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.tawMode === tawCurrentMode);
+  });
+}
+
+function tawToast(message) {
+    if (window.toast) {
+      window.toast(message);
+    } else {
+      console.log('TAW:', message);
+    }
+  }
+
+  // ─── TAW CORE LOGIC ─────────────────────────────
+  function tawAddStrike() {
+    tawStrikes++;
+    syncTawUI();
+    if (tawStrikes >= 3) {
+      tawToast('Game Over — 3 Strikes');
+      tawHandleGameOver('3 Strikes', false);
+      return true;
+    }
+    tawToast(`Strike ${tawStrikes}/3`);
+    return false;
+  }
+
+  function tawHandleGameOver(reason, victory = false) {
+    tawGameActive = false;
+    if (tawTimerInterval) { clearInterval(tawTimerInterval); tawTimerInterval = null; }
+    tawGoTitle.textContent = victory ? 'Victory' : 'Journey Ended';
+    tawGoSub.textContent = victory ? 'The path is complete.' : reason || 'The path has closed.';
+    tawGoPoints.textContent = tawPoints;
+    tawGoNames.textContent = tawUsedNameList.length;
+    tawGoBooks.textContent = `${tawCompletedBooks.size}/66`;
+    tawGoStreak.textContent = tawStreak;
+    tawGameOver.classList.add('visible');
+    syncTawUI();
+  }
+
+  function tawTeardown() {
+    tawGameActive = false;
+    if (tawTimerInterval) { clearInterval(tawTimerInterval); tawTimerInterval = null; }
+    tawUsedNames.clear();
+    tawUsedNameList = [];
+    tawCompletedBooks.clear();
+    tawBookContribution = {};
+    TAW_BOOKS.forEach(b => tawBookContribution[b] = 0);
+    tawStrikes = 0;
+    tawStreak = 0;
+    tawPoints = 0;
+    tawSkips = 3;
+    tawHints = 3;
+    tawAlphabetIndex = 0;
+    tawStormLetter = '';
+    tawCollectorIndex = 0;
+    tawTimer = 60;
+    tawDeadEndLetter = null;
+    tawCurrentName = "";
+    tawIsTimeAttack = false;
+    tawLastBook = null;
+    tawSameBookCount = 0;
+    tawGameOver.classList.remove('visible');
+    syncTawUI();
+  }
+
+  function tawInitMode(mode) {
+    TAW_NAMES = window.TAW_NAMES || {};
+    tawTeardown();
+    tawCurrentMode = mode;
+    tawGameActive = true;
+
+    if (mode === TAW_MODES.CHAIN) {
+      const seed = STARTER_NAMES[Math.floor(Math.random() * STARTER_NAMES.length)];
+      tawCommitEntry(seed.toLowerCase(), true);
+    } else if (mode === TAW_MODES.STORM) {
+      tawStormLetter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)].toLowerCase();
+      syncTawUI();
+    } else if (mode === TAW_MODES.COLLECTOR) {
+      tawCollectorIndex = 0;
+      syncTawUI();
+    } else if (mode === TAW_MODES.ALPHABET) {
+      tawAlphabetIndex = 0;
+      syncTawUI();
+    } else if (mode === TAW_MODES.TIMEATTACK) {
+      tawIsTimeAttack = true;
+      tawTimer = 60;
+      syncTawUI();
+      tawTimerInterval = setInterval(() => {
+        tawTimer--;
+        syncTawUI();
+        if (tawTimer <= 0) {
+          clearInterval(tawTimerInterval);
+          tawTimerInterval = null;
+          tawToast('Time Expired');
+          tawHandleGameOver('Time Expired', false);
+        }
+      }, 1000);
+    }
+
+    tawInput.focus();
+    tawToast(`Mode: ${mode.toUpperCase()}`);
+  }
+
+  function tawCommitEntry(nameLower, isInitialSeed = false) {
+    const displayForm = nameLower.charAt(0).toUpperCase() + nameLower.slice(1);
+    tawUsedNames.add(nameLower);
+    tawUsedNameList.push(displayForm);
+    tawCurrentName = displayForm;
+
+    const mappedBook = getTawTargetBook(nameLower, tawCompletedBooks);
+    if (mappedBook) {
+      if (tawLastBook === mappedBook) {
+        tawSameBookCount++;
+        if (tawSameBookCount >= 3) {
+          tawToast('3 same books in a row — Strike');
+          tawAddStrike();
+          tawSameBookCount = 0;
+          tawLastBook = null;
+        }
+      } else {
+        tawSameBookCount = 1;
+        tawLastBook = mappedBook;
+      }
+
+      tawBookContribution[mappedBook] = (tawBookContribution[mappedBook] || 0) + 1;
+      const limit = SHORT_BOOKS.has(mappedBook) ? 1 : 3;
+      if (tawBookContribution[mappedBook] >= limit && !tawCompletedBooks.has(mappedBook)) {
+        tawCompletedBooks.add(mappedBook);
+        tawPoints += 5;
+        tawSkips += 1;
+        tawToast(`Book Complete: ${mappedBook}`);
+      }
+    } else {
+      tawLastBook = null;
+      tawSameBookCount = 0;
+    }
+
+    if (!isInitialSeed) {
+      tawStreak++;
+      tawPoints += 10 + (tawStreak > 5 ? 5 : 0);
+    }
+
+    // Mode-specific logic
+    if (tawCurrentMode === TAW_MODES.CHAIN) {
+      let trail = nameLower.slice(-1);
+      if (nameLower.endsWith('ah')) trail = 'a';
+      const hasOptions = tawNameIndexByLetter[trail]?.some(n => !tawUsedNames.has(n));
+      if (!hasOptions) {
+        const viable = ALPHABET
+          .map(l => l.toLowerCase())
+          .filter(l => tawNameIndexByLetter[l]?.some(n => !tawUsedNames.has(n)));
+        tawDeadEndLetter = viable.length ? viable[Math.floor(Math.random() * viable.length)] : null;
+        if (tawDeadEndLetter) {
+          tawToast(`"${trail.toUpperCase()}" dry — try "${tawDeadEndLetter.toUpperCase()}"`);
+        }
+      } else {
+        tawDeadEndLetter = null;
+      }
+    } else if (tawCurrentMode === TAW_MODES.STORM) {
+      tawStormLetter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)].toLowerCase();
+    } else if (tawCurrentMode === TAW_MODES.COLLECTOR) {
+      if (mappedBook === TAW_BOOKS[tawCollectorIndex]) {
+        tawCompletedBooks.add(TAW_BOOKS[tawCollectorIndex]);
+        tawCollectorIndex++;
+        if (tawCollectorIndex >= TAW_BOOKS.length) {
+          tawHandleGameOver('All Books Gathered', true);
+        }
+      }
+    } else if (tawCurrentMode === TAW_MODES.ALPHABET) {
+      tawAlphabetIndex++;
+      if (tawAlphabetIndex >= ALPHABET.length) {
+        tawHandleGameOver('Alphabet Complete', true);
+      }
+    }
+
+    if (tawCompletedBooks.size >= TAW_BOOKS.length) {
+      tawHandleGameOver('Perfect Canon', true);
+    }
+
+    syncTawUI();
+  }
+
+  function tawProcessInput() {
+    if (!tawGameActive) return;
+    const raw = tawInput.value.trim().toLowerCase();
+    tawInput.value = '';
+    if (!raw) return;
+
+    // Check if name exists
+    if (!TAW_NAMES[raw]) {
+      tawToast('Name not found');
+      tawInput.classList.add('invalid');
+      setTimeout(() => tawInput.classList.remove('invalid'), 400);
+      tawAddStrike();
+      return;
+    }
+
+    if (tawUsedNames.has(raw)) {
+      tawToast('Already used');
+      tawInput.classList.add('invalid');
+      setTimeout(() => tawInput.classList.remove('invalid'), 400);
+      tawAddStrike();
+      return;
+    }
+
+    // Mode validation
+    let pass = false;
+    if (tawCurrentMode === TAW_MODES.CHAIN) {
+      pass = raw.charAt(0) === getTawChainLetter(tawCurrentName, tawDeadEndLetter);
+    } else if (tawCurrentMode === TAW_MODES.STORM) {
+      pass = raw.charAt(0) === tawStormLetter;
+    } else if (tawCurrentMode === TAW_MODES.COLLECTOR) {
+      pass = TAW_NAMES[raw].includes(TAW_BOOKS[tawCollectorIndex]);
+    } else if (tawCurrentMode === TAW_MODES.ALPHABET) {
+      pass = raw.charAt(0) === ALPHABET[tawAlphabetIndex].toLowerCase();
+    } else if (tawCurrentMode === TAW_MODES.TIMEATTACK) {
+      pass = true;
+    }
+
+    if (!pass) {
+      tawToast('Letter constraint violation');
+      tawInput.classList.add('invalid');
+      setTimeout(() => tawInput.classList.remove('invalid'), 400);
+      tawAddStrike();
+      return;
+    }
+
+    tawCommitEntry(raw);
+    tawToast(raw.toUpperCase());
+  }
+
+  function tawUseSkip() {
+    if (!tawGameActive) return;
+    if (tawSkips > 0) {
+      tawSkips--;
+      tawStreak = 0;
+      // Bypass
+      if (tawCurrentMode === TAW_MODES.CHAIN) {
+        const target = getTawChainLetter(tawCurrentName, tawDeadEndLetter);
+        const fallbackList = (target && tawNameIndexByLetter[target]) || STARTER_NAMES.map(n => n.toLowerCase());
+        const found = fallbackList.find(n => !tawUsedNames.has(n));
+        if (found) tawCommitEntry(found, true);
+      } else if (tawCurrentMode === TAW_MODES.STORM) {
+        tawStormLetter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)].toLowerCase();
+      } else if (tawCurrentMode === TAW_MODES.COLLECTOR) {
+        tawCollectorIndex++;
+        if (tawCollectorIndex >= TAW_BOOKS.length) tawHandleGameOver('All Books Gathered', true);
+      } else if (tawCurrentMode === TAW_MODES.ALPHABET) {
+        tawAlphabetIndex++;
+        if (tawAlphabetIndex >= ALPHABET.length) tawHandleGameOver('Alphabet Complete', true);
+      }
+      tawToast('Skip used');
+      syncTawUI();
+    } else {
+      tawToast('No skips — Strike');
+      tawAddStrike();
+    }
+  }
+
+  function tawUseHint() {
+    if (!tawGameActive || tawHints <= 0) {
+      tawToast('No hints left');
+      return;
+    }
+    let targetPool = [];
+    if (tawCurrentMode === TAW_MODES.CHAIN) {
+      targetPool = tawNameIndexByLetter[getTawChainLetter(tawCurrentName, tawDeadEndLetter)];
+    } else if (tawCurrentMode === TAW_MODES.STORM) {
+      targetPool = tawNameIndexByLetter[tawStormLetter];
+    } else if (tawCurrentMode === TAW_MODES.COLLECTOR) {
+      targetPool = tawNameIndexByBook[TAW_BOOKS[tawCollectorIndex]];
+    } else if (tawCurrentMode === TAW_MODES.ALPHABET) {
+      targetPool = tawNameIndexByLetter[ALPHABET[tawAlphabetIndex].toLowerCase()];
+    } else if (tawCurrentMode === TAW_MODES.TIMEATTACK) {
+      targetPool = Object.keys(TAW_NAMES);
+    }
+    const match = targetPool?.find(n => !tawUsedNames.has(n));
+    if (match) {
+      tawHints--;
+      tawToast(`Hint: ${match.toUpperCase()}`);
+      syncTawUI();
+    } else {
+      tawToast('No names left');
+    }
+  }
+
+  // ─── TAW EVENT LISTENERS ────────────────────────
+  
+  tawInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') tawProcessInput();
+  });
+
+  tawModesBtn.addEventListener('click', () => {
+    tawModesMenu.classList.toggle('visible');
+  });
+
+  tawModeChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      tawModesMenu.classList.remove('visible');
+      const mode = chip.dataset.tawMode;
+      if (tawGameActive && !confirm('Switch mode? Progress lost.')) return;
+      tawInitMode(mode);
+    });
+  });
+
+  tawHintBtn.addEventListener('click', tawUseHint);
+  tawSkipBtn.addEventListener('click', tawUseSkip);
+  tawGoBtn.addEventListener('click', () => tawInitMode(tawCurrentMode));
+// ─── TAW PANEL TOGGLE ────────────────────────────
+function toggleTaw() {
+  const panel = document.getElementById('tawPanel');
+  if (!panel) return;
+  
+  const isOpen = panel.classList.contains('open');
+  
+  // Close any other open panels
+  const dnaPanel = document.getElementById('dnaPanel');
+  const requestsPanel = document.getElementById('requestsPanel');
+  const guidedPanel = document.getElementById('guidedPanel');
+  
+  if (dnaPanel) dnaPanel.classList.remove('open');
+  if (requestsPanel) requestsPanel.classList.remove('open');
+  if (guidedPanel) guidedPanel.classList.remove('open');
+  
+  if (isOpen) {
+    panel.classList.remove('open');
+    panel.style.display = 'none';
+    panel.style.pointerEvents = 'none';
+  } else {
+    panel.style.display = 'block';
+    panel.style.pointerEvents = 'auto';
+    panel.classList.add('open');
+    
+    // Initialize the game
+    tawTeardown();
+    tawInitMode('chain');
+    syncTawUI();
+    
+    const tawInput = document.getElementById('tawInput');
+    if (tawInput) setTimeout(() => tawInput.focus(), 300);
+  }
+  
+  // Update dock
+  document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+  const nav = document.getElementById('navTaw');
+  if (nav) nav.classList.add('active');
+}
+
+  // ─── INIT ────────────────────────────────────────
+// Only initialize TAW when the panel is opened, not on load
+// tawInitMode(TAW_MODES.CHAIN); // ← COMMENT THIS OUT
+
+console.log('✦ TAW integrated into Palal');
+
+// ─── EXPOSE TAW GLOBALLY ─────────────────────────
+window.tawTeardown = tawTeardown;
+window.tawInitMode = tawInitMode;
+window.syncTawUI = syncTawUI;
+window.tawProcessInput = tawProcessInput;
+window.tawUseHint = tawUseHint;
+window.tawUseSkip = tawUseSkip;
+window.toggleTaw = toggleTaw;
+window.TAW_MODES = TAW_MODES;
 //.script.js 
+})();
