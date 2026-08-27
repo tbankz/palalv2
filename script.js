@@ -80,6 +80,8 @@ const DEFAULT_STATE = {
   currentCity: null,
   themeOverride: null,
   lastKnownCoords: null,
+  sanctuarySessions: [],
+  archetypeGender: 'male',
   messiahName: 'Yeshua',
   godName: 'Yahuah',
   _guidedActive: false,
@@ -1356,6 +1358,7 @@ function renderDNA() {
   renderDnaTodayStrip();
   renderDnaThemeBars();
   renderModeBreakdown();
+  renderConstellation();
 
   if (total === 0) {
     listEl.innerHTML = `${EMPTY_NETWORK_SVG}<div class="dna-empty">Start praying to see your DNA.</div>`;
@@ -1445,6 +1448,122 @@ function renderModeBreakdown() {
   });
   html += '</div>';
   container.innerHTML = html;
+}
+
+// ─── STARS OF ABRAHAM ────────────────────────────
+function getStarCount() {
+  return (D.sanctuarySessions || []).filter(s => s.duration >= 60).length;
+}
+function getMoonCount() {
+  return D.confBurnt || 0;
+}
+
+const PRAYER_ARCHETYPES_MALE = [
+  { name: 'The Ethiopian Eunuch', ref: 'Acts 8:27-38', threshold: 0 },
+  { name: 'John the Baptist', ref: 'Mark 1:3-4', threshold: 3 },
+  { name: 'Elijah', ref: '1 Kings 19:11-13', threshold: 10 },
+  { name: 'Moses', ref: 'Exodus 33:11', threshold: 25 },
+  { name: 'Daniel', ref: 'Daniel 6:10', threshold: 50 }
+];
+
+const PRAYER_ARCHETYPES_FEMALE = [
+  { name: 'Hannah', ref: '1 Samuel 1:12-16', threshold: 0 },
+  { name: 'Deborah', ref: 'Judges 4:4-5', threshold: 3 },
+  { name: 'Ruth', ref: 'Ruth 1:16-17', threshold: 10 },
+  { name: 'Mary of Bethany', ref: 'Luke 10:38-42', threshold: 25 },
+  { name: 'Anna the Prophetess', ref: 'Luke 2:36-38', threshold: 50 }
+];
+
+function getCurrentArchetype(starCount) {
+  const set = (D.archetypeGender === 'female') ? PRAYER_ARCHETYPES_FEMALE : PRAYER_ARCHETYPES_MALE;
+  let current = set[0];
+  set.forEach(a => { if (starCount >= a.threshold) current = a; });
+  return current;
+}
+
+// Confessions are kept permanently by default, matching how DNA already treats
+// them as lasting testimonies rather than the "washes away at dawn" ephemeral
+// version — deliberately not wired in, since that changes what confession
+// means in this app and shouldn't happen silently.
+
+function renderConstellation() {
+  const canvas = document.getElementById('starsCanvas');
+  const archetypeName = document.getElementById('archetypeName');
+  const archetypeRef = document.getElementById('archetypeRef');
+  if (!canvas) return;
+
+  const starCount = getStarCount();
+  const moonCount = getMoonCount();
+  const archetype = getCurrentArchetype(starCount);
+  if (archetypeName) archetypeName.textContent = archetype.name;
+  if (archetypeRef) archetypeRef.textContent = archetype.ref;
+
+  const genderToggle = document.getElementById('archetypeGenderToggle');
+  if (genderToggle) {
+    genderToggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.gender === (D.archetypeGender || 'male')));
+  }
+
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.parentNode.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.scale(dpr, dpr);
+
+  const w = rect.width, h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (starCount === 0 && moonCount === 0) {
+    ctx.fillStyle = 'rgba(197,180,158,0.3)';
+    ctx.font = 'italic 11px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText('no stars positioned yet', w / 2, h / 2);
+    return;
+  }
+
+  const gold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#C5B49E';
+  const count = Math.min(starCount, 40);
+
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(197,180,158,0.15)';
+  ctx.lineWidth = 1;
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    const x = 20 + (i / Math.max(count - 1, 1)) * (w - 40);
+    const y = h / 2 + Math.sin(i * 0.8) * (h * 0.25);
+    points.push({ x, y });
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  points.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5, 0, 2 * Math.PI);
+    ctx.fillStyle = gold;
+    ctx.fill();
+  });
+
+  for (let i = 0; i < Math.min(moonCount, 12); i++) {
+    const x = 20 + Math.random() * (w - 40);
+    const y = 10 + Math.random() * (h * 0.3);
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(197,180,158,0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function setArchetypeGender(gender) {
+  D.archetypeGender = gender;
+  saveLocal();
+  renderConstellation();
+  const toggle = document.getElementById('archetypeGenderToggle');
+  if (toggle) {
+    toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.gender === gender));
+  }
 }
 
 // ─── DNA DETAIL MODAL ────────────────────────────
@@ -2543,6 +2662,10 @@ function leaveSanctuary() {
   if (capsule) capsule.classList.remove('visible');
 
   D.totalSolSec = (D.totalSolSec || 0) + sanctuaryTimer;
+  if (sanctuaryTimer > 0) {
+    if (!D.sanctuarySessions) D.sanctuarySessions = [];
+    D.sanctuarySessions.push({ duration: sanctuaryTimer, timestamp: new Date().toISOString() });
+  }
   saveLocal();
   renderDNA();
 
@@ -3980,6 +4103,15 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(function(e) {
       console.warn('Palal: service worker registration failed.', e);
     });
+    // A previously-installed service worker updates itself in the background;
+    // once the new one takes over, reload once so the fresh code actually
+    // shows up instead of silently sitting there until the next visit.
+    let hasReloadedForUpdate = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (hasReloadedForUpdate) return;
+      hasReloadedForUpdate = true;
+      window.location.reload();
+    });
   });
 }
 
@@ -4015,6 +4147,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Initialize Guided Prayers
   initGuidedPrayers();
+
+  document.querySelectorAll('#archetypeGenderToggle button').forEach(btn => {
+    btn.addEventListener('click', () => setArchetypeGender(btn.dataset.gender));
+  });
 
   // Restore guided state if active
   if (D._guidedActive && D._guidedPrayer) {

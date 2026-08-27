@@ -2229,6 +2229,33 @@ body {
 .dna-breakdown-label { font-size: calc(0.375rem * var(--app-text-scale)); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.6; }
 .dna-breakdown-num { font-size: calc(0.875rem * var(--app-text-scale)); font-weight: 300; color: var(--gold); margin-top: 0.125rem; }
 
+.stars-section { margin-top: 1rem; padding-top: 0.75rem; border-top: 0.5px solid var(--gold-line); }
+.stars-title { font-size: calc(0.4375rem * var(--app-text-scale)); letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.4; margin-bottom: 0.5rem; }
+.stars-canvas-container { width: 100%; height: 100px; position: relative; }
+.stars-canvas-container canvas { width: 100%; height: 100%; display: block; }
+.stars-caption { font-family: var(--serif); font-style: italic; font-size: calc(0.4375rem * var(--app-text-scale)); color: var(--ink-mid); opacity: 0.5; text-align: center; margin-top: 0.375rem; }
+.archetype-display { text-align: center; margin-top: 0.75rem; padding-top: 0.625rem; border-top: 0.5px solid var(--ink-faint); }
+.archetype-label { display: block; font-size: calc(0.34375rem * var(--app-text-scale)); letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.4; }
+.archetype-name { display: block; font-family: var(--serif); font-size: calc(0.75rem * var(--app-text-scale)); color: var(--gold); margin-top: 0.125rem; }
+.archetype-ref { display: block; font-size: calc(0.375rem * var(--app-text-scale)); color: var(--ember); opacity: 0.7; margin-top: 0.0625rem; letter-spacing: 0.08em; }
+.archetype-gender-toggle { display: flex; justify-content: center; gap: 0.375rem; margin-top: 0.5rem; }
+.archetype-gender-toggle button {
+  font-size: calc(0.34375rem * var(--app-text-scale));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mid);
+  background: none;
+  border: 0.5px solid var(--gold-line);
+  border-radius: 99px;
+  padding: 0.1875rem 0.625rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 300;
+  min-height: 26px;
+}
+.archetype-gender-toggle button:hover { color: var(--gold); border-color: var(--gold-str); }
+.archetype-gender-toggle button.active { color: var(--gold); border-color: var(--gold); background: var(--gold-dim); }
+
 /* ─── DNA DETAIL MODAL ─── */
 .dna-detail-modal {
   position: absolute;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palal-shell-v1';
+const CACHE_NAME = 'palal-shell-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -32,8 +32,9 @@ self.addEventListener('activate', function(event) {
   );
 });
 
-// Cache-first for the app shell; anything else (map tiles, live APIs) goes
-// straight to the network so prayer data and world data always stay fresh.
+// HTML/CSS/JS are network-first (fresh code every load, cache is just the
+// offline fallback) — this app changes constantly, so a stale cache-first
+// shell would silently hide new features from anyone with the SW installed.
 self.addEventListener('fetch', function(event) {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -42,6 +43,28 @@ self.addEventListener('fetch', function(event) {
   const isShellRequest = url.origin === self.location.origin;
   if (!isShellRequest) return;
 
+  const isNetworkFirst = req.mode === 'navigate' ||
+    /\.(html|css|js)$/.test(url.pathname) ||
+    url.pathname === self.registration.scope.replace(self.location.origin, '');
+
+  if (isNetworkFirst) {
+    event.respondWith(
+      fetch(req).then(function(res) {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(function(cache) { cache.put(req, copy); });
+        }
+        return res;
+      }).catch(function() {
+        return caches.match(req).then(function(cached) {
+          return cached || caches.match('./index.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // Static assets (icons, manifest) — cache-first is fine, they rarely change.
   event.respondWith(
     caches.match(req).then(function(cached) {
       if (cached) return cached;
@@ -51,8 +74,6 @@ self.addEventListener('fetch', function(event) {
           caches.open(CACHE_NAME).then(function(cache) { cache.put(req, copy); });
         }
         return res;
-      }).catch(function() {
-        if (req.mode === 'navigate') return caches.match('./index.html');
       });
     })
   );
