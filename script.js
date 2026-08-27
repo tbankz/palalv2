@@ -17,6 +17,40 @@ function toast(m) {
 
 function vibrate() { if (navigator.vibrate) navigator.vibrate(10); }
 
+// A dormant, unlit version of the DNA/connections network — used wherever
+// there's no data yet, instead of plain empty-state text.
+const EMPTY_NETWORK_SVG = `
+<div class="empty-illustration" aria-hidden="true">
+  <svg viewBox="0 0 160 100" class="empty-network">
+    <line x1="24" y1="70" x2="58" y2="34"></line>
+    <line x1="58" y1="34" x2="96" y2="52"></line>
+    <line x1="96" y1="52" x2="132" y2="26"></line>
+    <line x1="58" y1="34" x2="82" y2="78"></line>
+    <line x1="96" y1="52" x2="120" y2="80"></line>
+    <line x1="24" y1="70" x2="12" y2="30"></line>
+    <circle cx="24" cy="70" r="2.5"></circle>
+    <circle cx="58" cy="34" r="3"></circle>
+    <circle cx="96" cy="52" r="2.5"></circle>
+    <circle cx="132" cy="26" r="2"></circle>
+    <circle cx="82" cy="78" r="2"></circle>
+    <circle cx="120" cy="80" r="2.5"></circle>
+    <circle cx="12" cy="30" r="2"></circle>
+  </svg>
+</div>`;
+
+// Distinct tactile identity per prayer mode — same nerve, different phrase.
+const MODE_HAPTICS = {
+  petition: [15, 40, 15],        // quick double pulse — reaching out
+  confession: [70],              // one slow release
+  thanksgiving: [10, 30, 10, 30, 12], // light triple tap — bright
+  intercession: [25, 50, 40],    // firm pulse, steady follow — standing in the gap
+  lament: [100]                  // one long, heavy pulse
+};
+function vibrateForMode(modeName) {
+  if (!navigator.vibrate) return;
+  navigator.vibrate(MODE_HAPTICS[modeName] || 10);
+}
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -44,6 +78,8 @@ const DEFAULT_STATE = {
   modeSaved: { temptation: [], healing: [] },
   homeCity: null,
   currentCity: null,
+  themeOverride: null,
+  lastKnownCoords: null,
   messiahName: 'Yeshua',
   godName: 'Yahuah',
   _guidedActive: false,
@@ -70,6 +106,376 @@ function loadLocal() {
 
 let D = loadLocal();
 
+// ─── SUPABASE (Prayer Circles only) ──────────────
+// Private prayer entries, confessions, and everything else stay local-only
+// (STORE/localStorage above). Only circle data — creating/joining a circle
+// and the prayers shared inside it — goes through Supabase.
+const SUPABASE_URL = 'https://xuvjajakligpdwsutwcb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1dmphamFrbGlncGR3c3V0d2NiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NzY0NzAsImV4cCI6MjEwMzM1MjQ3MH0.SAdshaTMc8GPed_NMWBKUjeFx4ruXFRbCpcp0V2vYb0';
+const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+async function createCircle(name, description) {
+  if (!supabaseClient) { toast('Circles unavailable right now'); return null; }
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) { toast('Sign in to create a circle'); return null; }
+  const { data, error } = await supabaseClient.from('circles')
+    .insert({ name, description, created_by: user.id }).select().single();
+  if (error) { console.warn(error); toast('Could not create circle'); return null; }
+  await supabaseClient.from('circle_members').insert({ circle_id: data.id, user_id: user.id });
+  toast('Circle created');
+  return data;
+}
+
+async function joinCircle(circleId) {
+  if (!supabaseClient) { toast('Circles unavailable right now'); return; }
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) { toast('Sign in to join a circle'); return; }
+  const { error } = await supabaseClient.from('circle_members').insert({ circle_id: circleId, user_id: user.id });
+  if (error) { toast('Could not join circle'); return; }
+  toast('Joined circle');
+}
+
+async function postCirclePrayer(circleId, text) {
+  if (!supabaseClient) { toast('Circles unavailable right now'); return; }
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) { toast('Sign in to share with your circle'); return; }
+  const { error } = await supabaseClient.from('circle_prayers').insert({ circle_id: circleId, user_id: user.id, text });
+  if (error) { toast('Could not post'); return; }
+  toast('Shared with circle');
+}
+
+async function loadCirclePrayers(circleId) {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient.from('circle_prayers')
+    .select('*').eq('circle_id', circleId).eq('archived', false).order('created_at', { ascending: false });
+  if (error) { console.warn(error); return []; }
+  return data;
+}
+
+async function getDiscoverCircles() {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from('circles')
+    .select('id, name, description, circle_members(count), circle_prayers(count)')
+    .order('created_at', { ascending: false });
+  if (error) { console.warn(error); return []; }
+  return data.map(c => ({
+    id: c.id, name: c.name, description: c.description,
+    memberCount: c.circle_members?.[0]?.count || 0,
+    prayerCount: c.circle_prayers?.[0]?.count || 0
+  }));
+}
+
+async function getMyCircles() {
+  if (!supabaseClient) return [];
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabaseClient
+    .from('circle_members')
+    .select('circles(id, name, description, circle_members(count))')
+    .eq('user_id', user.id);
+  if (error) { console.warn(error); return []; }
+  return data.map(row => ({
+    id: row.circles.id, name: row.circles.name, description: row.circles.description,
+    memberCount: row.circles.circle_members?.[0]?.count || 0
+  }));
+}
+
+window.createCircle = createCircle;
+window.joinCircle = joinCircle;
+window.postCirclePrayer = postCirclePrayer;
+window.loadCirclePrayers = loadCirclePrayers;
+window.getDiscoverCircles = getDiscoverCircles;
+window.getMyCircles = getMyCircles;
+
+// ─── PRAYER CIRCLES PANEL UI ──────────────────────
+let currentCircleTab = 'discover';
+
+async function renderCircles() {
+  const container = document.getElementById('circlesContent');
+  if (!container) return;
+  container.innerHTML = '<div class="dna-empty">Loading…</div>';
+
+  if (!supabaseClient) {
+    container.innerHTML = '<div class="dna-empty">Circles unavailable right now.</div>';
+    return;
+  }
+
+  const { data: { user } } = await supabaseClient.auth.getUser();
+
+  if (currentCircleTab === 'discover') {
+    const [circles, myCircles] = await Promise.all([
+      getDiscoverCircles(),
+      user ? getMyCircles() : Promise.resolve([])
+    ]);
+    const joinedIds = new Set(myCircles.map(c => c.id));
+
+    let html = '<div class="circles-grid">';
+    if (circles.length === 0) {
+      html = '<div class="dna-empty">No circles yet — be the first to start one.</div>';
+    } else {
+      circles.forEach(c => {
+        const joined = joinedIds.has(c.id);
+        html += `
+          <div class="circle-card">
+            <div class="circle-icon">◈</div>
+            <div class="circle-name">${escapeHtml(c.name)}</div>
+            <div class="circle-desc">${escapeHtml(c.description || '')}</div>
+            <div class="circle-stats">
+              <span><span class="num">${c.memberCount}</span> members</span>
+              <span><span class="num">${c.prayerCount}</span> prayers</span>
+            </div>
+            <button class="join-btn" data-join-id="${c.id}" ${joined || !user ? 'disabled' : ''}>${joined ? 'Joined' : 'Join'}</button>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+    html += user
+      ? '<button class="circle-create-btn" id="circleCreateBtn">✦ Start a Circle</button>'
+      : '<div class="dna-empty" style="opacity:0.5;">Sign in to start or join a circle.</div>';
+    container.innerHTML = html;
+    const createBtn = document.getElementById('circleCreateBtn');
+    if (createBtn) createBtn.addEventListener('click', showCircleCreateForm);
+    container.querySelectorAll('.join-btn[data-join-id]').forEach(btn => {
+      btn.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Joining…';
+        await joinCircle(btn.dataset.joinId);
+        renderCircles();
+      });
+    });
+  }
+
+  if (currentCircleTab === 'mine') {
+    if (!user) {
+      container.innerHTML = '<div class="dna-empty">Sign in to see your circles.</div>';
+      return;
+    }
+    const circles = await getMyCircles();
+    let html = '';
+    if (circles.length === 0) {
+      html = '<div class="dna-empty">You haven\'t joined any circles yet.</div>';
+    } else {
+      circles.forEach(c => {
+        html += `
+          <div class="circle-item" onclick="openCircleRoom('${c.id}')">
+            <div class="info">
+              <div class="name">◈ ${escapeHtml(c.name)}</div>
+              <div class="members">${c.memberCount} members</div>
+            </div>
+          </div>
+        `;
+      });
+    }
+    container.innerHTML = html;
+  }
+}
+
+// ─── INVITE LINKS (real invite_code, not the raw circle id) ──
+async function checkInviteLink() {
+  const params = new URLSearchParams(window.location.search);
+  const joinCode = params.get('join');
+  if (!joinCode || !supabaseClient) return;
+  const { data: circle, error } = await supabaseClient
+    .from('circles').select('id, name, description').eq('invite_code', joinCode).single();
+  if (error || !circle) { toast('Invite link not found or expired'); return; }
+  showInvitePrompt(circle);
+}
+
+function showInvitePrompt(circle) {
+  const overlay = document.createElement('div');
+  overlay.className = 'invite-prompt-overlay';
+  overlay.innerHTML = `
+    <div class="invite-prompt-card">
+      <div class="invite-prompt-label">You've been invited to</div>
+      <div class="invite-prompt-name">${escapeHtml(circle.name)}</div>
+      <div class="invite-prompt-desc">${escapeHtml(circle.description || '')}</div>
+      <div class="invite-prompt-actions">
+        <button class="circle-create-btn" id="inviteJoinBtn">Join Circle</button>
+        <button class="circle-create-btn" id="inviteDeclineBtn" style="background:var(--gold-dim);color:var(--gold);">Not now</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('inviteDeclineBtn').addEventListener('click', () => overlay.remove());
+  document.getElementById('inviteJoinBtn').addEventListener('click', async () => {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) { toast('Sign in first, then reopen this invite link'); overlay.remove(); return; }
+    await joinCircle(circle.id);
+    overlay.remove();
+    window.history.replaceState({}, '', window.location.pathname);
+  });
+}
+
+function getCircleInviteLink(inviteCode) {
+  return window.location.origin + window.location.pathname + '?join=' + inviteCode;
+}
+
+async function joinByCode(code) {
+  const cleanCode = code.trim().toLowerCase();
+  if (!cleanCode) { toast('Enter an invite code'); return; }
+  const { data: circle, error } = await supabaseClient.from('circles').select('id, name').eq('invite_code', cleanCode).single();
+  if (error || !circle) { toast('No circle found with that code'); return; }
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) { toast('Sign in to join a circle'); return; }
+  await joinCircle(circle.id);
+  currentCircleTab = 'mine';
+  renderCircles();
+}
+const joinCodeBtn = document.getElementById('joinCodeBtn');
+if (joinCodeBtn) {
+  joinCodeBtn.addEventListener('click', () => joinByCode(document.getElementById('joinCodeInput').value));
+}
+
+// ─── CIRCLE ROOM (shared prayer feed) ─────────────
+async function openCircleRoom(circleId) {
+  const { data: circle } = await supabaseClient.from('circles').select('*').eq('id', circleId).single();
+  if (!circle) return;
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  const prayers = await loadCirclePrayers(circleId);
+
+  const prayerIds = prayers.map(p => p.id);
+  let myReactions = new Set();
+  if (user && prayerIds.length) {
+    const { data: reactions } = await supabaseClient
+      .from('circle_prayer_prayers').select('prayer_id')
+      .eq('user_id', user.id).in('prayer_id', prayerIds);
+    myReactions = new Set((reactions || []).map(r => r.prayer_id));
+  }
+
+  const counts = {};
+  if (prayerIds.length) {
+    const { data: allReactions } = await supabaseClient
+      .from('circle_prayer_prayers').select('prayer_id').in('prayer_id', prayerIds);
+    (allReactions || []).forEach(r => { counts[r.prayer_id] = (counts[r.prayer_id] || 0) + 1; });
+  }
+
+  const container = document.getElementById('circlesContent');
+  let html = `
+    <button class="settings-btn" id="circleRoomBack" style="margin-bottom:0.75rem;">← Back to My Circles</button>
+    <div class="circle-room-header">
+      <div class="circle-room-name">◈ ${escapeHtml(circle.name)}</div>
+      <button class="settings-btn" id="circleShareBtn">✦ Share invite link</button>
+    </div>
+    <div class="circle-room-feed">
+  `;
+  if (prayers.length === 0) {
+    html += '<div class="dna-empty">No prayers shared yet. Be the first.</div>';
+  } else {
+    prayers.forEach(p => {
+      const iPrayed = myReactions.has(p.id);
+      html += `
+        <div class="circle-room-item">
+          <div class="circle-room-text">"${escapeHtml(p.text)}"</div>
+          <div class="circle-room-meta">
+            <span>${new Date(p.created_at).toLocaleDateString()}${p.answered ? ' · <span style="color:#64C878;">answered</span>' : ''}</span>
+            <div style="display:flex;gap:0.375rem;">
+              <button class="circle-pray-btn ${iPrayed ? 'prayed' : ''}" data-prayer-id="${p.id}" ${iPrayed ? 'disabled' : ''}>
+                <svg class="prayer-flame-icon" viewBox="0 0 16 16" width="9" height="9"><path d="M8 1c1.5 3 3 4.5 3 7a3 3 0 1 1-6 0c0-1 .5-2 1-2.5-.2 1 .3 1.5 1 1.5-.5-2 .3-4 1-6z" fill="none" stroke="currentColor" stroke-width="1"/></svg> ${counts[p.id] || 0}
+              </button>
+              ${p.user_id === user?.id ? `<button class="circle-archive-btn" data-archive-id="${p.id}">Archive</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>
+    <div class="request-input-row">
+      <input type="text" id="newCirclePrayerInput" placeholder="Share a prayer with this circle…" maxlength="200">
+      <button id="submitCirclePrayerBtn">Share</button>
+    </div>
+  `;
+  container.innerHTML = html;
+
+  document.getElementById('circleRoomBack').addEventListener('click', () => { currentCircleTab = 'mine'; renderCircles(); });
+  document.getElementById('circleShareBtn').addEventListener('click', () => {
+    const link = getCircleInviteLink(circle.invite_code);
+    navigator.clipboard.writeText(link).then(() => toast('Invite link copied'));
+  });
+  document.getElementById('submitCirclePrayerBtn').addEventListener('click', async () => {
+    const input = document.getElementById('newCirclePrayerInput');
+    if (!input.value.trim()) return;
+    await postCirclePrayer(circleId, input.value.trim());
+    openCircleRoom(circleId);
+  });
+  document.querySelectorAll('.circle-pray-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) { toast('Sign in to pray for this'); return; }
+      await supabaseClient.from('circle_prayer_prayers').insert({ prayer_id: this.dataset.prayerId, user_id: user.id });
+      openCircleRoom(circleId);
+    });
+  });
+  document.querySelectorAll('.circle-archive-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      await supabaseClient.from('circle_prayers').update({ archived: true }).eq('id', this.dataset.archiveId);
+      openCircleRoom(circleId);
+    });
+  });
+}
+window.openCircleRoom = openCircleRoom;
+
+function showCircleCreateForm() {
+  const container = document.getElementById('circlesContent');
+  if (!container) return;
+  const formHtml = `
+    <div class="circle-create-form">
+      <input type="text" id="newCircleName" placeholder="Circle name" maxlength="60" />
+      <textarea id="newCircleDesc" placeholder="What's this circle for? (optional)" maxlength="140" rows="2"></textarea>
+      <div style="display:flex;gap:0.5rem;">
+        <button class="circle-create-btn" id="circleCreateConfirm" style="flex:1;">Create</button>
+        <button class="circle-create-btn" id="circleCreateCancel" style="flex:1;background:var(--gold-dim);color:var(--gold);border:0.5px solid var(--gold-line);">Cancel</button>
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('afterbegin', formHtml);
+  document.getElementById('circleCreateCancel').addEventListener('click', renderCircles);
+  document.getElementById('circleCreateConfirm').addEventListener('click', async function() {
+    const name = document.getElementById('newCircleName').value.trim();
+    const desc = document.getElementById('newCircleDesc').value.trim();
+    if (!name) { toast('Give your circle a name'); return; }
+    await createCircle(name, desc);
+    currentCircleTab = 'mine';
+    renderCircles();
+  });
+}
+
+document.addEventListener('click', function(e) {
+  const tab = e.target.closest('[data-circle-tab]');
+  if (tab && document.getElementById('circlesPanel')?.classList.contains('open')) {
+    currentCircleTab = tab.dataset.circleTab;
+    document.querySelectorAll('[data-circle-tab]').forEach(t => t.classList.toggle('active', t === tab));
+    renderCircles();
+  }
+});
+
+const navCircles = document.getElementById('navCircles');
+if (navCircles) {
+  navCircles.addEventListener('click', function() {
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    if (isSanctuaryActive) leaveSanctuary();
+    ['dnaPanel', 'requestsPanel', 'guidedPanel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('open');
+    });
+    const panel = document.getElementById('circlesPanel');
+    if (panel) { panel.classList.toggle('open'); if (panel.classList.contains('open')) renderCircles(); }
+  });
+}
+const closeCircles = document.getElementById('closeCircles');
+if (closeCircles) {
+  closeCircles.addEventListener('click', function() {
+    document.getElementById('circlesPanel')?.classList.remove('open');
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('navWorld')?.classList.add('active');
+  });
+}
+
 function saveLocal() {
   try {
     localStorage.setItem(STORE, JSON.stringify(D));
@@ -93,9 +499,66 @@ function applyTheme(th) {
 
 const themeBtn = $('themeBtn');
 if (themeBtn) {
-  themeBtn.addEventListener('click', function() { 
-    applyTheme(D.theme === 'dark' ? 'light' : 'dark'); 
+  themeBtn.addEventListener('click', function() {
+    // A manual tap is a deliberate override — Palal otherwise follows
+    // real sunrise/sunset at the user's location automatically.
+    D.themeOverride = D.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(D.themeOverride);
   });
+}
+
+// ─── AUTO THEME (real sunrise/sunset, not a manual guess) ───
+// Classic sunrise/sunset almanac algorithm — no API/key needed.
+function getSunTimes(lat, lng, date) {
+  date = date || new Date();
+  const rad = Math.PI / 180;
+  const start = Date.UTC(date.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((date.getTime() - start) / 86400000);
+  const zenith = 90.833;
+
+  function calc(isSunrise) {
+    const lngHour = lng / 15;
+    const t = isSunrise ? dayOfYear + ((6 - lngHour) / 24) : dayOfYear + ((18 - lngHour) / 24);
+    const M = (0.9856 * t) - 3.289;
+    let L = M + (1.916 * Math.sin(M * rad)) + (0.020 * Math.sin(2 * M * rad)) + 282.634;
+    L = (L + 360) % 360;
+    let RA = (1 / rad) * Math.atan(0.91764 * Math.tan(L * rad));
+    RA = (RA + 360) % 360;
+    const Lquadrant = Math.floor(L / 90) * 90;
+    const RAquadrant = Math.floor(RA / 90) * 90;
+    RA = (RA + (Lquadrant - RAquadrant)) / 15;
+    const sinDec = 0.39782 * Math.sin(L * rad);
+    const cosDec = Math.cos(Math.asin(sinDec));
+    const cosH = (Math.cos(zenith * rad) - (sinDec * Math.sin(lat * rad))) / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null;
+    let H = isSunrise ? 360 - (1 / rad) * Math.acos(cosH) : (1 / rad) * Math.acos(cosH);
+    H = H / 15;
+    const T = H + RA - (0.06571 * t) - 6.622;
+    return (T - lngHour + 24) % 24;
+  }
+
+  const sunriseUT = calc(true);
+  const sunsetUT = calc(false);
+  if (sunriseUT == null || sunsetUT == null) return null;
+
+  function toLocalDate(utcHours) {
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    d.setUTCMinutes(Math.round(utcHours * 60));
+    return d;
+  }
+
+  return { sunrise: toLocalDate(sunriseUT), sunset: toLocalDate(sunsetUT) };
+}
+
+function applyAutoTheme() {
+  if (D.themeOverride) return;
+  const coords = D.lastKnownCoords;
+  if (!coords) return;
+  const times = getSunTimes(coords.lat, coords.lng, new Date());
+  if (!times) return;
+  const now = new Date();
+  const isDaytime = now >= times.sunrise && now < times.sunset;
+  applyTheme(isDaytime ? 'light' : 'dark');
 }
 
 // ─── COUNTRY DATA ──────────────────────────────
@@ -765,6 +1228,7 @@ function renderRequests() {
 
   if (!D.requests || D.requests.length === 0) {
     container.innerHTML = `
+      ${EMPTY_NETWORK_SVG}
       <div class="requests-empty">No prayer requests yet.<br>Share one below.</div>
       <div class="request-input-row">
         <input type="text" id="newRequestInput" placeholder="Share a prayer request…" maxlength="200">
@@ -891,9 +1355,10 @@ function renderDNA() {
 
   renderDnaTodayStrip();
   renderDnaThemeBars();
+  renderModeBreakdown();
 
   if (total === 0) {
-    listEl.innerHTML = `<div class="dna-empty">Start praying to see your DNA.</div>`;
+    listEl.innerHTML = `${EMPTY_NETWORK_SVG}<div class="dna-empty">Start praying to see your DNA.</div>`;
     return;
   }
 
@@ -915,7 +1380,8 @@ function renderDNA() {
     const id = entry.id;
     const modeEmoji = {
       petition: '◈', confession: '◐', thanksgiving: '✧',
-      intercession: '✦', lament: '◌', adoration: '◉'
+      intercession: '✦', lament: '◌', evangelism: '◇',
+      contemplation: '○', adoration: '◎'
     }[entry.mode] || '◈';
 
     const cityText = entry.city && entry.city !== 'Global' ? entry.city : '';
@@ -963,6 +1429,22 @@ function renderDnaThemeBars() {
   el.innerHTML = top.map(([theme, count]) =>
     `<div class="theme-bar-item"><span class="theme-name">${escapeHtml(theme)}</span><div class="theme-bar-container"><div class="theme-bar-fill" style="width:${(count / max) * 100}%"></div></div><span class="theme-count">${count}</span></div>`
   ).join('');
+}
+
+function renderModeBreakdown() {
+  const container = document.getElementById('dnaBreakdown');
+  if (!container) return;
+  const categories = ['petition', 'intercession', 'evangelism', 'thanksgiving', 'lament', 'contemplation', 'confession', 'adoration'];
+  const counts = {};
+  categories.forEach(c => counts[c] = 0);
+  D.entries.forEach(e => { if (counts.hasOwnProperty(e.mode)) counts[e.mode]++; });
+
+  let html = '<div class="dna-breakdown-title">By Type</div><div class="dna-breakdown-grid">';
+  categories.forEach(c => {
+    html += `<div class="dna-breakdown-item"><div class="dna-breakdown-label">${c}</div><div class="dna-breakdown-num">${counts[c]}</div></div>`;
+  });
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 // ─── DNA DETAIL MODAL ────────────────────────────
@@ -1189,16 +1671,36 @@ function initMap() {
 
   L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
 
-  const tileUrl = isDark ?
-    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' :
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 6, minZoom: 1, subdomains: 'abc',
+    attribution: 'Map data: © OpenStreetMap contributors, SRTM | © OpenTopoMap (CC-BY-SA)',
+    className: 'topo-tile-layer'
+  });
 
-  L.tileLayer(tileUrl, {
-    maxZoom: 6,
-    minZoom: 1,
-    attribution: '',
-    subdomains: isDark ? 'abcd' : 'abc',
-  }).addTo(mapInstance);
+  const detailLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 6, minZoom: 1,
+    attribution: '© OpenStreetMap contributors',
+    subdomains: 'abc',
+    className: isDark ? 'osm-dark-tile-layer' : ''
+  });
+
+  const ZOOM_SWITCH_LEVEL = 5;
+  let currentLayerMode = mapInstance.getZoom() >= ZOOM_SWITCH_LEVEL ? 'detail' : 'topo';
+  (currentLayerMode === 'detail' ? detailLayer : topoLayer).addTo(mapInstance);
+
+  mapInstance.on('zoomend', function() {
+    const zoom = mapInstance.getZoom();
+    const shouldBeDetail = zoom >= ZOOM_SWITCH_LEVEL;
+    if (shouldBeDetail && currentLayerMode !== 'detail') {
+      mapInstance.removeLayer(topoLayer);
+      detailLayer.addTo(mapInstance);
+      currentLayerMode = 'detail';
+    } else if (!shouldBeDetail && currentLayerMode !== 'topo') {
+      mapInstance.removeLayer(detailLayer);
+      topoLayer.addTo(mapInstance);
+      currentLayerMode = 'topo';
+    }
+  });
 
   try {
     const saved = localStorage.getItem('palal_map_counts');
@@ -1315,13 +1817,26 @@ function initMap() {
         saveLocal();
       }
 
+      D.lastKnownCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      saveLocal();
+      applyAutoTheme();
+
       setTimeout(function() {
         // Fly to the user's actual live coordinates, not just the nearest
         // predefined city, so this reflects where they really are right now.
         mapInstance.flyTo([pos.coords.latitude, pos.coords.longitude], 9, { duration: 1.4 });
         if (homeCity) showCityOverlay(homeCity);
         updateHomeMarkers();
-        resolveUserRegion(pos.coords.latitude, pos.coords.longitude).then(showRegionWelcome);
+        resolveUserRegion(pos.coords.latitude, pos.coords.longitude).then(function(region) {
+          showRegionWelcome(region);
+          // Refresh the Prayer tab's default city with where the user really
+          // is right now, instead of leaving a stale, previously-selected city.
+          const liveName = region && (region.cityName || region.countryName);
+          if (liveName) {
+            D.currentCity = { name: liveName, weather: getCityWeather(), headline: getCityHeadline(liveName) };
+            saveLocal();
+          }
+        });
       }, 1000);
     }, function() {
       if (homeCity) {
@@ -1576,7 +2091,13 @@ const MODES = [
   { name: 'intercession', symbol: '✦', verse: '"Pray for one another."', ref: 'James 5:16',
     placeholder: 'pray for others…' },
   { name: 'lament', symbol: '◌', verse: '"Out of the depths I cry to you, Lord."', ref: 'Psalm 130:1',
-    placeholder: 'cry out…' }
+    placeholder: 'cry out…' },
+  { name: 'evangelism', symbol: '◇', verse: '"Go therefore and make disciples of all nations."', ref: 'Matthew 28:19',
+    placeholder: 'pray for those who don\'t yet know…' },
+  { name: 'contemplation', symbol: '○', verse: '"Be still, and know that I am God."', ref: 'Psalm 46:10',
+    placeholder: 'rest in silence…' },
+  { name: 'adoration', symbol: '◎', verse: '"Holy, holy, holy, is the Lord God Almighty."', ref: 'Revelation 4:8',
+    placeholder: 'worship…' }
 ];
 
 let currentModeIndex = 0;
@@ -1600,7 +2121,10 @@ const MODE_VERSE_REFS = {
   confession: ['1 John 1:9', 'Psalm 51:10', 'Proverbs 28:13', 'Psalm 51:1', 'Psalm 32:5'],
   thanksgiving: ['1 Thessalonians 5:18', 'Psalm 107:1', 'Psalm 100:4', 'Colossians 3:17', 'Psalm 118:1'],
   intercession: ['James 5:16', '1 Timothy 2:1', 'Ephesians 6:18', 'Romans 8:26', 'Colossians 4:2'],
-  lament: ['Psalm 130:1', 'Psalm 22:1', 'Psalm 13:1', 'Psalm 42:11', 'Psalm 6:6']
+  lament: ['Psalm 130:1', 'Psalm 22:1', 'Psalm 13:1', 'Psalm 42:11', 'Psalm 6:6'],
+  evangelism: ['Matthew 28:19', 'Mark 16:15', 'Romans 10:14', '2 Corinthians 5:20', 'Acts 1:8'],
+  contemplation: ['Psalm 46:10', 'Psalm 62:1', 'Habakkuk 2:20', 'Psalm 131:2', 'Exodus 14:14'],
+  adoration: ['Revelation 4:8', 'Psalm 95:6', 'Psalm 8:1', 'Psalm 29:2', 'Isaiah 6:3']
 };
 let lastScriptureRefByMode = {};
 let modeScriptureRequestId = 0;
@@ -1664,6 +2188,30 @@ function updateMode() {
     if (requestId !== modeScriptureRequestId || currentModeIndex !== modeAtRequest) return;
     displayModeScripture(result.verse, result.ref);
   });
+}
+
+// ─── LITURGICAL HOUR (real clock, not hardcoded) ─
+const LITURGICAL_HOURS = [
+  { name: 'The Dawn Watch', range: [5, 11], focus: 'Adoration & Intentions' },
+  { name: 'The Noonday Axis', range: [11, 16], focus: 'Intercessions' },
+  { name: 'The Dusk Watch', range: [16, 21], focus: 'Confession & Thanksgiving' },
+  { name: 'The Vigil', range: [21, 5], focus: 'Lamentation' }
+];
+
+function getCurrentLiturgicalHour() {
+  const hour = new Date().getHours();
+  return LITURGICAL_HOURS.find(h => {
+    const [start, end] = h.range;
+    return start < end ? (hour >= start && hour < end) : (hour >= start || hour < end);
+  }) || LITURGICAL_HOURS[3];
+}
+
+function renderLiturgicalClock() {
+  const el = document.getElementById('liturgicalClock');
+  if (!el) return;
+  const current = getCurrentLiturgicalHour();
+  el.textContent = current.name;
+  el.dataset.focus = current.focus;
 }
 
 function updateCharCounter() {
@@ -1790,7 +2338,10 @@ function getScriptureForMode(mode) {
     lament: ['"Out of the depths I cry to you, O Lord."', 'Psalm 130:1'],
     thanksgiving: ['"Give thanks to the Lord, for he is good."', 'Psalm 107:1'],
     intercession: ['"Pray for one another, that you may be healed."', 'James 5:16'],
-    confession: ['"If we confess our sins, he is faithful and just."', '1 John 1:9']
+    confession: ['"If we confess our sins, he is faithful and just."', '1 John 1:9'],
+    evangelism: ['"Go therefore and make disciples of all nations."', 'Matthew 28:19'],
+    contemplation: ['"Be still, and know that I am God."', 'Psalm 46:10'],
+    adoration: ['"Holy, holy, holy, is the Lord God Almighty."', 'Revelation 4:8']
   };
   const [verse, ref] = map[mode] || ['"Be still, and know that I am God."', 'Psalm 46:10'];
   return [replaceGodName(replaceMessiahName(verse)), ref];
@@ -1896,7 +2447,7 @@ function burnConfession(text) {
     refEl.textContent = '1 John 1:9';
   }
   toast('Confession burnt — you are forgiven');
-  vibrate();
+  vibrateForMode('confession');
 
   setTimeout(() => {
     const scripture = getScriptureForMode(currentSanctuaryMode);
@@ -2087,7 +2638,7 @@ function submitPrayer() {
   renderDNA();
   toast('Prayer lifted · ' + mode.name);
   input.value = '';
-  vibrate();
+  vibrateForMode(mode.name);
 
   enterSanctuary(mode.name);
 }
@@ -2138,7 +2689,7 @@ window.prayForMapPoint = function(id) {
   } catch (e) {}
 
   toast('Prayed for ' + point.country);
-  vibrate();
+  vibrateForMode('intercession');
 
   D.currentCity = { name: point.country, weather: getCityWeather(), headline: point.prayer };
   selectedCity = { name: point.country };
@@ -2456,6 +3007,13 @@ if (scriptureBlock) {
   });
 }
 
+const liturgicalClock = document.getElementById('liturgicalClock');
+if (liturgicalClock) {
+  liturgicalClock.addEventListener('click', function() {
+    toast(this.textContent + ' · ' + this.dataset.focus);
+  });
+}
+
 // ─── MAP LEGEND ──────────────────────────────────
 const legendToggle = document.getElementById('legendToggle');
 const legendContent = document.getElementById('legendContent');
@@ -2604,22 +3162,45 @@ const TUTORIAL_SEEN_KEY = 'palal_tutorial_seen_v4';
   window.closeTutorial = closeTutorial;
 })();
 
-// ─── SIGN IN / LOGOUT ────────────────────────────
+// ─── SIGN IN / LOGOUT (Supabase Google OAuth) ────
 const signInGoogle = $('signInGoogle');
 if (signInGoogle) {
-  signInGoogle.addEventListener('click', function() {
-    toast('Sign in with Google (coming soon)');
+  signInGoogle.addEventListener('click', async function() {
+    if (!supabaseClient) { toast('Sign-in unavailable right now'); return; }
+    const { error } = await supabaseClient.auth.signInWithOAuth({ provider: 'google' });
+    if (error) { toast('Sign-in failed'); console.warn(error); }
   });
 }
 
 const logoutBtn = $('logoutBtn');
 if (logoutBtn) {
-  logoutBtn.addEventListener('click', function() {
-    toast('Signed out');
-    const userInfo = $('userInfo');
-    const signInGoogle2 = $('signInGoogle');
+  logoutBtn.addEventListener('click', async function() {
+    if (supabaseClient) await supabaseClient.auth.signOut();
+    toast('Logged out');
+    updateAuthUI(null);
+  });
+}
+
+function updateAuthUI(user) {
+  const userInfo = $('userInfo');
+  const signInBtn = $('signInGoogle');
+  const userName = $('userName');
+  if (user) {
+    if (userInfo) userInfo.classList.add('show');
+    if (signInBtn) signInBtn.style.display = 'none';
+    if (userName) userName.textContent = (user.user_metadata && user.user_metadata.full_name) || user.email || 'Friend';
+  } else {
     if (userInfo) userInfo.classList.remove('show');
-    if (signInGoogle2) signInGoogle2.style.display = '';
+    if (signInBtn) signInBtn.style.display = '';
+  }
+}
+
+if (supabaseClient) {
+  supabaseClient.auth.onAuthStateChange(function(event, session) {
+    updateAuthUI(session && session.user ? session.user : null);
+  });
+  supabaseClient.auth.getUser().then(function(res) {
+    updateAuthUI(res.data.user);
   });
 }
 
@@ -2892,7 +3473,7 @@ function prayWithOthers(countryName) {
   renderDNA();
 
   toast('🤝 Praying with others for ' + countryName);
-  vibrate();
+  vibrateForMode('intercession');
 }
 
 // ─── PRAY WITH OTHERS BUTTON ──────────────────
@@ -3393,12 +3974,27 @@ function updatePresetHighlight() {
   });
 }
 
+// ─── PWA: INSTALLABLE + WORKS OFFLINE ────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js').catch(function(e) {
+      console.warn('Palal: service worker registration failed.', e);
+    });
+  });
+}
+
 // ─── INIT ────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
+  checkInviteLink();
+
   applyTheme(D.theme || 'light');
+  applyAutoTheme();
+  setInterval(applyAutoTheme, 15 * 60 * 1000);
 
   buildModeTrack();
   updateMode();
+  renderLiturgicalClock();
+  setInterval(renderLiturgicalClock, 60 * 60 * 1000);
   renderDNA();
   renderRequests();
   initMap();

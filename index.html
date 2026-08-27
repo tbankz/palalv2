@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Palal — Prayer Intelligence</title>
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#100E0C" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Palal" />
+  <link rel="icon" href="./icons/icon-512.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="./styles.css?v=20260825120003" />
 </head>
@@ -41,6 +49,7 @@
         <span class="hud-dot"></span> map · live
       </div>
 
+      <div class="incense-feed-band"></div>
       <div class="incense-feed-container">
         <div class="incense-smoke" id="mapIncenseSmoke">
           <span class="incense-text-scroll" id="mapIncenseText">…</span>
@@ -132,6 +141,7 @@
         <button class="mode-arrow" id="nextMode" aria-label="Next mode"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
       </div>
       <span class="nexus-hint" id="nexusHint">hold to enter</span>
+      <div class="liturgical-clock" id="liturgicalClock">—</div>
       <div class="crown-housing">
         <button class="crown-button" id="nexusBtn" aria-label="Enter sanctuary"></button>
         <svg class="dial-ring-svg" viewBox="0 0 148 148">
@@ -161,6 +171,8 @@
       <button class="dock-btn" id="navGuided">✦ Guided</button>
       <span class="dock-sep">·</span>
       <button class="dock-btn" id="navDNA">DNA</button>
+      <span class="dock-sep">·</span>
+      <button class="dock-btn" id="navCircles">Circles</button>
       <span class="dock-sep">·</span>
       <button class="dock-btn" id="navRequests">Requests</button>
       <span class="dock-sep">·</span>
@@ -287,8 +299,11 @@
         <button class="filter-chip" data-filter="adoration">Adoration</button>
         <button class="filter-chip" data-filter="confession">Confession</button>
         <button class="filter-chip" data-filter="intercession">Intercession</button>
+        <button class="filter-chip" data-filter="evangelism">Evangelism</button>
+        <button class="filter-chip" data-filter="contemplation">Contemplation</button>
       </div>
       <div id="dnaList"></div>
+      <div id="dnaBreakdown" class="dna-breakdown"></div>
       <div class="settings-link" id="settingsLinkDNA">⚙ Settings</div>
     </div>
 
@@ -532,12 +547,28 @@
         </div>
       </div>
     </div>
-   
 
+    <!-- ─── PRAYER CIRCLES PANEL ─── -->
+    <div class="circles-panel" id="circlesPanel">
+      <div class="dna-header">
+        <div class="dna-title">◈ Prayer Circles</div>
+        <button class="dna-close" id="closeCircles" aria-label="Close circles">✕</button>
+      </div>
+      <div class="prayerwall-tabs">
+        <button class="prayerwall-tab active" data-circle-tab="discover">Discover</button>
+        <button class="prayerwall-tab" data-circle-tab="mine">My Circles</button>
+      </div>
+      <div class="join-code-row">
+        <input type="text" id="joinCodeInput" placeholder="Have an invite code?" maxlength="12" style="text-transform:uppercase;">
+        <button id="joinCodeBtn">Join</button>
+      </div>
+      <div id="circlesContent"></div>
+    </div>
 
   </div>  <!-- ← CLOSES .enclosure -->
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src=".//script.js?v=20260825120003"></script>
 </body>
 </html>

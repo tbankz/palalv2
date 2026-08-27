@@ -312,6 +312,19 @@ body {
   filter: sepia(8%) saturate(85%) brightness(1.02);
 }
 
+.topo-tile-layer {
+  filter: sepia(35%) saturate(55%) brightness(0.55) hue-rotate(-8deg) contrast(1.1);
+  transition: opacity 0.4s;
+}
+[data-theme="light"] .topo-tile-layer {
+  filter: sepia(20%) saturate(65%) brightness(1.0) hue-rotate(-8deg);
+}
+
+.osm-dark-tile-layer {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.95) saturate(0.6) sepia(15%);
+  transition: filter 0.4s;
+}
+
 .map-panel::after {
   content: '';
   position: absolute;
@@ -365,11 +378,24 @@ body {
 }
 
 /* ─── MAP INCENSE FEED ─── */
+.incense-feed-band {
+  position: absolute;
+  bottom: 40px;
+  left: 0; right: 0;
+  height: 76px;
+  z-index: 449;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.12) 60%, transparent 100%);
+  backdrop-filter: blur(2px);
+}
+[data-theme="light"] .incense-feed-band {
+  background: linear-gradient(to top, rgba(245,242,236,0.5) 0%, rgba(245,242,236,0.15) 60%, transparent 100%);
+}
 .incense-feed-container {
   position: absolute;
   bottom: 48px;
   left: 0;
-  right: 0;
+  right: 3.5rem;
   height: 2.5rem;
   z-index: 450;
   display: flex;
@@ -380,7 +406,7 @@ body {
 }
 .incense-smoke {
   font-size: 0.5rem;
-  color: var(--ink);
+  color: #F0EDE8;
   opacity: 0;
   transform: translateY(4px);
   transition: all 0.8s var(--ease);
@@ -404,14 +430,15 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
   letter-spacing: 0.01em;
-  opacity: 0.85;
+  opacity: 0.92;
   font-size: 0.5rem;
   line-height: 1.3;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75), 0 0 12px rgba(0, 0, 0, 0.4);
 }
 .join-prayer-btn {
   background: transparent;
   border: none;
-  color: var(--gold);
+  color: #E8D2A8;
   font-size: 0.375rem;
   cursor: pointer;
   padding: 0.25rem 0;
@@ -420,6 +447,7 @@ body {
   font-weight: 600;
   flex-shrink: 0;
   position: relative;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
 }
 .join-prayer-btn::after {
   content: '';
@@ -428,7 +456,7 @@ body {
   left: 0;
   width: 100%;
   height: 0.5px;
-  background: var(--gold);
+  background: #E8D2A8;
   transform: scaleX(0);
   transform-origin: right;
   transition: transform 0.3s var(--ease);
@@ -1135,7 +1163,7 @@ body {
 }
 
 .dock-btn {
-  font-size: 0.625rem;
+  font-size: calc(0.625rem * var(--app-text-scale));
   letter-spacing: 0.25em;
   text-transform: uppercase;
   color: var(--ink-mid);
@@ -1176,7 +1204,7 @@ body {
 }
 
 .dock-sep {
-  font-size: 0.4375rem;
+  font-size: calc(0.4375rem * var(--app-text-scale));
   color: var(--ink-faint);
   opacity: 0.2;
 }
@@ -1280,6 +1308,21 @@ body {
 }
 
 .nexus-hint.active { opacity: 0.8; color: var(--gold); }
+
+.liturgical-clock {
+  font-size: 0.4375rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border: 0.5px solid var(--gold-line);
+  border-radius: 99px;
+  transition: all 0.2s;
+}
+.liturgical-clock:hover { opacity: 0.8; border-color: var(--gold-str); color: var(--gold); }
 
 .crown-housing {
   position: relative;
@@ -1942,7 +1985,12 @@ body {
 .dna-metric .value { font-size: calc(0.875rem * var(--app-text-scale)); font-weight: 200; color: var(--gold); line-height: 1; }
 .dna-metric .label { font-size: calc(0.3125rem * var(--app-text-scale)); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mid); font-weight: 300; opacity: 0.6; }
 
-.dna-empty { text-align: center; padding: 1.5rem 0; font-size: calc(0.4375rem * var(--app-text-scale)); color: var(--ink-mid); opacity: 0.4; letter-spacing: 0.1em; font-weight: 300; }
+.dna-empty { text-align: center; padding: 0 0 1.5rem; font-size: calc(0.4375rem * var(--app-text-scale)); color: var(--ink-mid); opacity: 0.4; letter-spacing: 0.1em; font-weight: 300; }
+
+.empty-illustration { display: flex; justify-content: center; padding-top: 1.25rem; margin-bottom: 0.25rem; opacity: 0.6; }
+.empty-network { width: 8.75rem; height: auto; }
+.empty-network line { stroke: var(--gold-line); stroke-width: 0.75; }
+.empty-network circle { fill: var(--gold); opacity: 0.55; }
 
 /* ─── DNA TEXT SIZE TOGGLE ─── */
 .dna-size-toggle { display: flex; gap: 0.25rem; }
@@ -2173,6 +2221,13 @@ body {
 .theme-bar-container { flex: 1; height: 3px; background: var(--gold-line); border-radius: 2px; margin: 0 0.375rem; overflow: hidden; }
 .theme-bar-fill { height: 100%; background: var(--gold); width: 0%; border-radius: 2px; }
 .theme-count { color: var(--ink-mid); width: 1.25rem; text-align: right; font-size: calc(0.375rem * var(--app-text-scale)); }
+
+.dna-breakdown { margin-top: 1rem; padding-top: 0.75rem; border-top: 0.5px solid var(--gold-line); }
+.dna-breakdown-title { font-size: calc(0.4375rem * var(--app-text-scale)); letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.4; margin-bottom: 0.5rem; }
+.dna-breakdown-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.dna-breakdown-item { background: var(--card); border: 0.5px solid var(--gold-line); border-radius: 10px; padding: 0.5rem 0.625rem; }
+.dna-breakdown-label { font-size: calc(0.375rem * var(--app-text-scale)); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.6; }
+.dna-breakdown-num { font-size: calc(0.875rem * var(--app-text-scale)); font-weight: 300; color: var(--gold); margin-top: 0.125rem; }
 
 /* ─── DNA DETAIL MODAL ─── */
 .dna-detail-modal {
@@ -3076,6 +3131,72 @@ body {
 .guided-panel.open {
   transform: translateY(0);
 }
+
+/* ═══════════════════════════════════════════════
+   PRAYER CIRCLES
+   ═══════════════════════════════════════════════ */
+.circles-panel {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: var(--surface);
+  border-top: 0.5px solid var(--gold-line);
+  border-radius: 32px 32px 0 0;
+  padding: 1.5rem 1.5rem 2.5rem;
+  transform: translateY(100%);
+  transition: transform 0.5s var(--ease);
+  z-index: 304;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.circles-panel.open { transform: translateY(0); }
+.prayerwall-tabs { display: flex; gap: 1rem; margin-bottom: 1rem; border-bottom: 0.5px solid var(--gold-line); }
+.prayerwall-tab { padding: 0.375rem 0; font-size: 0.4375rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-mid); background: none; border: none; cursor: pointer; transition: all 0.2s; border-bottom: 1px solid transparent; font-weight: 300; min-height: 44px; display: inline-flex; align-items: center; }
+.prayerwall-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.prayerwall-tab:hover { color: var(--gold); }
+.join-code-row { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.join-code-row input { flex: 1; background: var(--bg); border: 0.5px solid var(--gold-line); border-radius: 99px; padding: 0.375rem 0.875rem; color: var(--ink); font-size: 0.4375rem; letter-spacing: 0.1em; outline: none; min-height: 36px; }
+.join-code-row input:focus { border-color: var(--gold-str); }
+.join-code-row button { background: var(--gold); color: var(--bg); border: none; border-radius: 99px; padding: 0.375rem 0.875rem; font-size: 0.4375rem; cursor: pointer; min-height: 36px; }
+.circles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; margin-bottom: 1.25rem; }
+.circle-card { background: var(--card); border: 0.5px solid var(--gold-line); border-radius: 14px; padding: 0.75rem; transition: all 0.2s; cursor: pointer; position: relative; }
+.circle-card:hover { border-color: var(--gold-str); background: var(--gold-dim); transform: translateY(-2px); }
+.circle-card .circle-icon { font-size: 1rem; color: var(--gold); opacity: 0.6; margin-bottom: 0.25rem; }
+.circle-card .circle-name { font-family: var(--serif); font-size: 0.75rem; color: var(--gold); font-weight: 400; letter-spacing: 0.05em; margin-bottom: 0.0625rem; }
+.circle-card .circle-desc { font-size: 0.375rem; letter-spacing: 0.02em; color: var(--ink-mid); opacity: 0.5; margin-bottom: 0.375rem; line-height: 1.4; }
+.circle-card .circle-stats { display: flex; gap: 0.5rem; font-size: 0.375rem; color: var(--ink-mid); opacity: 0.5; }
+.circle-card .circle-stats .num { font-size: 0.625rem; color: var(--gold); opacity: 0.8; }
+.circle-create-btn { width: 100%; padding: 0.5rem; background: var(--gold); color: var(--bg); border: none; border-radius: 99px; font-size: 0.4375rem; font-weight: 400; cursor: pointer; letter-spacing: 0.15em; text-transform: uppercase; transition: all 0.15s; margin-top: 0.625rem; min-height: 44px; }
+.circle-create-btn:hover { opacity: 0.8; }
+.circle-item { padding: 0.625rem 0; border-bottom: 0.5px solid var(--gold-line); display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: opacity 0.15s; }
+.circle-item:hover { opacity: 0.75; }
+.circle-item:last-child { border-bottom: none; }
+.circle-item .info .name { font-size: 0.625rem; color: var(--gold); font-weight: 400; }
+.circle-item .info .members { font-size: 0.375rem; color: var(--ink-mid); margin-top: 0.0625rem; font-weight: 300; }
+.join-btn { font-size: 0.375rem; padding: 0.1875rem 0.625rem; border: 0.5px solid var(--gold-line); border-radius: 99px; background: none; color: var(--gold); cursor: pointer; transition: all 0.15s; white-space: nowrap; font-weight: 300; min-height: 32px; display: inline-flex; align-items: center; }
+.join-btn:hover { background: var(--gold); color: var(--bg); }
+.join-btn:disabled { opacity: 0.4; cursor: default; }
+.circle-card .join-btn { width: 100%; justify-content: center; margin-top: 0.5rem; }
+.circle-create-form { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; background: var(--card); border: 0.5px solid var(--gold-line); border-radius: 12px; margin-bottom: 0.75rem; }
+.circle-create-form input, .circle-create-form textarea { background: var(--bg); border: 0.5px solid var(--gold-line); border-radius: 10px; padding: 0.5rem 0.75rem; color: var(--ink); font-size: 0.5rem; outline: none; font-family: var(--sans); }
+.circle-create-form input:focus, .circle-create-form textarea:focus { border-color: var(--gold-str); }
+
+.invite-prompt-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 30000; display: flex; align-items: center; justify-content: center; padding: 1.5rem; backdrop-filter: blur(4px); }
+.invite-prompt-card { background: var(--surface); border: 0.5px solid var(--gold-line); border-radius: 20px; padding: 1.5rem; max-width: 300px; text-align: center; }
+.invite-prompt-label { font-size: 0.4375rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.5; }
+.invite-prompt-name { font-family: var(--serif); font-size: 1.125rem; color: var(--gold); margin: 0.375rem 0; }
+.invite-prompt-desc { font-size: 0.625rem; color: var(--ink-mid); margin-bottom: 1rem; }
+.invite-prompt-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+.circle-room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.circle-room-name { font-family: var(--serif); font-size: 0.9375rem; color: var(--gold); }
+.circle-room-item { padding: 0.625rem 0; border-bottom: 0.5px solid var(--ink-faint); }
+.circle-room-text { font-family: var(--serif); font-style: italic; font-size: 0.75rem; color: var(--ink); line-height: 1.4; }
+.circle-room-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 0.375rem; font-size: 0.375rem; color: var(--ink-mid); }
+.circle-pray-btn { background: none; border: 0.5px solid var(--gold-line); border-radius: 99px; padding: 0.25rem 0.625rem; color: var(--gold); cursor: pointer; font-size: 0.375rem; }
+.circle-pray-btn.prayed { background: var(--gold-dim); color: var(--gold); opacity: 0.6; }
+.circle-pray-btn { display: inline-flex; align-items: center; gap: 0.25rem; }
+.prayer-flame-icon { color: var(--gold); flex-shrink: 0; }
+.circle-pray-btn.prayed .prayer-flame-icon { color: var(--ember); }
+.circle-archive-btn { background: none; border: 0.5px solid var(--gold-line); border-radius: 99px; padding: 0.25rem 0.5rem; color: var(--ink-mid); cursor: pointer; font-size: 0.34375rem; opacity: 0.5; }
+.circle-archive-btn:hover { opacity: 1; color: var(--gold); }
 
 /* ─── GUIDED CONTENT ─── */
 .guided-content {
