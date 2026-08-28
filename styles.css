@@ -1118,11 +1118,8 @@ body {
 #cityOverlay:hover { border-color: var(--gold-str); }
 
 .city-name { font-size: 0.5rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--gold); opacity: 0.4; margin-bottom: 2px; }
-.city-temp { font-size: 1.25rem; font-weight: 300; color: var(--gold); letter-spacing: 0.05em; line-height: 1.2; }
-.city-weather { font-size: 0.625rem; color: var(--ink-mid); opacity: 0.5; letter-spacing: 0.05em; margin-bottom: 6px; }
 .city-divider { border-top: 0.5px solid var(--gold-line); padding-top: 6px; margin-bottom: 6px; }
 .city-headline { font-size: 0.75rem; font-family: var(--serif); color: var(--gold); letter-spacing: 0.02em; line-height: 1.5; }
-.city-meta { font-size: 0.4375rem; color: var(--ink-mid); opacity: 0.3; letter-spacing: 0.05em; }
 .city-home-badge { font-size: 0.375rem; color: var(--gold); opacity: 0.2; letter-spacing: 0.1em; margin-top: 4px; }
 .city-pray-hint { margin-top: 8px; font-size: 0.5rem; color: var(--gold); opacity: 0.3; letter-spacing: 0.15em; text-transform: uppercase; border-top: 0.5px solid var(--gold-line); padding-top: 8px; }
 
@@ -1544,7 +1541,6 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
   padding: 1.5rem 1.5rem 1rem;
   opacity: 0;
   visibility: hidden;
@@ -1561,11 +1557,21 @@ body {
   pointer-events: auto;
 }
 
+.sol-hero {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
 .sol-orb-field {
   position: relative;
-  width: 7rem;
-  height: 7rem;
-  margin: 0 auto 0.5rem;
+  width: 10rem;
+  height: 10rem;
+  margin: 0 auto 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1574,15 +1580,15 @@ body {
 
 .sol-orb {
   position: absolute;
-  width: 6rem;
-  height: 6rem;
+  width: 8.5rem;
+  height: 8.5rem;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: radial-gradient(circle at 38% 36%, #D4845A 0%, rgba(212, 74, 90, 0.15) 60%, transparent 100%);
   animation: solBreathe 9s ease-in-out infinite;
-  filter: blur(12px);
+  filter: blur(14px);
 }
 
 @keyframes solBreathe {
@@ -1940,6 +1946,14 @@ body {
 .dna-identity .streak { color: var(--ember); }
 
 .dna-header-controls { display: flex; align-items: center; gap: 0.25rem; }
+.identity-caption {
+  font-size: 0.34375rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-mid);
+  opacity: 0.4;
+  margin-top: 0.125rem;
+  padding-left: 0.125rem;
+}
 
 .dna-close {
   position: relative;
@@ -2256,6 +2270,28 @@ body {
 .archetype-gender-toggle button:hover { color: var(--gold); border-color: var(--gold-str); }
 .archetype-gender-toggle button.active { color: var(--gold); border-color: var(--gold); background: var(--gold-dim); }
 
+.companion-section { margin-top: 1rem; padding-top: 0.75rem; border-top: 0.5px solid var(--gold-line); }
+.companion-title { font-size: 0.4375rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.4; margin-bottom: 0.5rem; text-align: center; }
+.companion-choose-desc { font-size: 0.4375rem; color: var(--ink-mid); opacity: 0.6; text-align: center; margin-bottom: 0.75rem; }
+.companion-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.companion-choice-btn {
+  background: var(--card); border: 0.5px solid var(--gold-line); border-radius: 12px;
+  padding: 0.75rem 0.5rem; text-align: center; cursor: pointer; transition: all 0.2s;
+}
+.companion-choice-btn:hover { border-color: var(--gold-str); background: var(--gold-dim); }
+.companion-choice-symbol { display: block; font-size: 1rem; color: var(--gold); opacity: 0.7; margin-bottom: 0.25rem; }
+.companion-choice-name { display: block; font-family: var(--serif); font-size: 0.6875rem; color: var(--ink); }
+.companion-choice-era { display: block; font-size: 0.34375rem; color: var(--ink-mid); opacity: 0.5; margin-top: 0.0625rem; }
+.companion-card { background: var(--card); border: 0.5px solid var(--gold-line); border-radius: 16px; padding: 1rem; text-align: center; }
+.companion-symbol { font-size: 1.25rem; color: var(--gold); opacity: 0.7; margin-bottom: 0.25rem; }
+.companion-name { font-family: var(--serif); font-size: 0.9375rem; color: var(--gold); }
+.companion-era { font-size: 0.375rem; color: var(--ink-mid); opacity: 0.5; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.625rem; }
+.companion-bio { font-size: 0.5625rem; color: var(--ink-mid); line-height: 1.55; margin-bottom: 0.75rem; }
+.companion-pray-btn { display: block; width: 100%; padding: 0.5rem; background: var(--gold); color: var(--bg); border: none; border-radius: 99px; font-size: 0.4375rem; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; margin-bottom: 0.5rem; min-height: 40px; }
+.companion-pray-btn:hover { opacity: 0.88; }
+.companion-change-btn { background: none; border: none; color: var(--ink-mid); opacity: 0.4; font-size: 0.34375rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
+.companion-change-btn:hover { opacity: 0.8; }
+
 /* ─── DNA DETAIL MODAL ─── */
 .dna-detail-modal {
   position: absolute;
@@ -2514,7 +2550,6 @@ body {
    ═══════════════════════════════════════════════ */
 @media (max-width: 375px) {
   .enclosure { padding: 2rem 1rem 1.5rem; }
-  .city-temp { font-size: 1rem; }
   #cityOverlay { padding: 12px 16px 14px; width: 90%; }
   .crown-housing { width: 8rem; height: 8rem; }
   .crown-button { width: 6.25rem; height: 6.25rem; }
@@ -2526,13 +2561,13 @@ body {
   }
   
   .sol-orb-field {
-    width: 5.5rem !important;
-    height: 5.5rem !important;
+    width: 8rem !important;
+    height: 8rem !important;
   }
-  
+
   .sol-orb {
-    width: 4.5rem !important;
-    height: 4.5rem !important;
+    width: 6.5rem !important;
+    height: 6.5rem !important;
   }
   
   .sol-verse {
@@ -3205,6 +3240,54 @@ body {
 .circle-create-form { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; background: var(--card); border: 0.5px solid var(--gold-line); border-radius: 12px; margin-bottom: 0.75rem; }
 .circle-create-form input, .circle-create-form textarea { background: var(--bg); border: 0.5px solid var(--gold-line); border-radius: 10px; padding: 0.5rem 0.75rem; color: var(--ink); font-size: 0.5rem; outline: none; font-family: var(--sans); }
 .circle-create-form input:focus, .circle-create-form textarea:focus { border-color: var(--gold-str); }
+.circle-private-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.4375rem;
+  color: var(--ink-mid);
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.circle-private-toggle input[type="checkbox"] { accent-color: var(--gold); width: 12px; height: 12px; }
+.member-row { display: flex; justify-content: space-between; align-items: center; padding: 0.625rem 0; border-bottom: 0.5px solid var(--gold-line); }
+.member-row:last-child { border-bottom: none; }
+.member-info { display: flex; align-items: center; gap: 0.5rem; }
+.member-name { font-size: 0.625rem; color: var(--ink); }
+.member-badge { font-size: 0.3125rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.0625rem 0.375rem; border-radius: 99px; }
+.member-badge.owner { background: var(--gold); color: var(--bg); }
+.member-badge.admin { background: var(--gold-dim); color: var(--gold); border: 0.5px solid var(--gold-line); }
+.member-actions { display: flex; gap: 0.375rem; }
+.member-action-btn { background: none; border: 0.5px solid var(--gold-line); border-radius: 99px; padding: 0.1875rem 0.5rem; color: var(--ink-mid); font-size: 0.34375rem; cursor: pointer; }
+.member-action-btn:hover { color: var(--gold); border-color: var(--gold-str); }
+.member-action-btn.danger { color: var(--ember); border-color: var(--ember-dim); }
+.member-action-btn.danger:hover { background: var(--ember-dim); }
+
+.daily-challenge-card { background: linear-gradient(135deg, var(--gold-dim), var(--card)); border: 0.5px solid var(--gold-str); border-radius: 16px; padding: 1rem; margin-bottom: 1rem; text-align: center; }
+.daily-challenge-toprow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.daily-challenge-label { font-size: 0.4375rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); opacity: 0.8; }
+.daily-challenge-countdown { font-size: 0.34375rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-mid); opacity: 0.6; font-family: monospace; }
+.daily-challenge-tags { display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.daily-challenge-theme, .daily-challenge-testament { font-size: 0.34375rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.125rem 0.5rem; border-radius: 99px; border: 0.5px solid var(--gold-line); color: var(--gold); opacity: 0.85; }
+.daily-challenge-testament { color: var(--ember); border-color: var(--ember-dim); }
+.daily-challenge-verse { font-family: var(--serif); font-style: italic; font-size: 0.6875rem; color: var(--ink); opacity: 0.9; line-height: 1.5; margin-bottom: 0.5rem; }
+.daily-challenge-text { font-size: 0.5625rem; color: var(--ink-mid); line-height: 1.5; margin-bottom: 0.75rem; }
+.daily-challenge-btn { padding: 0.5rem 1.5rem; background: var(--gold); color: var(--bg); border: none; border-radius: 99px; font-size: 0.4375rem; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; min-height: 40px; }
+.daily-challenge-btn:hover { opacity: 0.88; }
+.daily-challenge-actions { display: flex; gap: 0.5rem; justify-content: center; }
+.daily-challenge-share-btn {
+  padding: 0.5rem 1rem;
+  background: none;
+  color: var(--gold);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 99px;
+  font-size: 0.4375rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  min-height: 40px;
+}
+.daily-challenge-share-btn:hover { border-color: var(--gold-str); background: var(--gold-dim); }
 
 .invite-prompt-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 30000; display: flex; align-items: center; justify-content: center; padding: 1.5rem; backdrop-filter: blur(4px); }
 .invite-prompt-card { background: var(--surface); border: 0.5px solid var(--gold-line); border-radius: 20px; padding: 1.5rem; max-width: 300px; text-align: center; }
@@ -3224,6 +3307,19 @@ body {
 .circle-pray-btn.prayed .prayer-flame-icon { color: var(--ember); }
 .circle-archive-btn { background: none; border: 0.5px solid var(--gold-line); border-radius: 99px; padding: 0.25rem 0.5rem; color: var(--ink-mid); cursor: pointer; font-size: 0.34375rem; opacity: 0.5; }
 .circle-archive-btn:hover { opacity: 1; color: var(--gold); }
+.circle-rename-btn { background: none; border: 0.5px solid var(--gold-line); border-radius: 99px; padding: 0.1875rem 0.5rem; color: var(--ink-mid); font-size: 0.34375rem; cursor: pointer; }
+.circle-rename-btn:hover { color: var(--gold); border-color: var(--gold-str); }
+.circle-rename-input {
+  background: var(--bg);
+  border: 0.5px solid var(--gold-line);
+  border-radius: 8px;
+  padding: 0.25rem 0.5rem;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-family: var(--serif);
+  width: 70%;
+}
+.circle-rename-input:focus { border-color: var(--gold-str); outline: none; }
 
 /* ─── GUIDED CONTENT ─── */
 .guided-content {
@@ -3544,6 +3640,21 @@ body {
 .preset-btn.active .preset-select {
   opacity: 0.8;
   color: var(--gold);
+}
+
+.preset-btn.recommended { border-color: var(--gold-str); background: var(--gold-dim); }
+.tradition-badge {
+  position: absolute;
+  top: -6px;
+  right: 10px;
+  background: var(--gold);
+  color: var(--bg);
+  font-size: 0.3125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.09375rem 0.375rem;
+  border-radius: 99px;
+  font-weight: 600;
 }
 
 /* ─── SETTINGS DIVIDER ─── */
@@ -4007,9 +4118,7 @@ body {
   .taw-controls { gap: 1rem; }
   /* Ensure low-level captions remain legible in light mode */
 [data-theme="light"] .nexus-hint,
-[data-theme="light"] .city-context,
-[data-theme="light"] .city-meta,
-[data-theme="light"] .city-weather {
+[data-theme="light"] .city-context {
   opacity: 0.75 !important;
 }
 }

@@ -62,6 +62,78 @@ function escapeHtml(str) {
 
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+// ─── MODAL FOCUS TRAP ────────────────────────────
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+function trapFocus(el) {
+  const lastFocused = document.activeElement;
+  const focusables = () => Array.from(el.querySelectorAll(FOCUSABLE_SELECTOR)).filter(f => f.offsetParent !== null);
+  const first = focusables()[0];
+  if (first) setTimeout(() => first.focus(), 50);
+
+  function handleTab(e) {
+    if (e.key !== 'Tab') return;
+    const items = focusables();
+    if (!items.length) return;
+    const firstEl = items[0], lastEl = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === firstEl) { e.preventDefault(); lastEl.focus(); }
+    else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); firstEl.focus(); }
+  }
+  el._a11yTabHandler = handleTab;
+  el._a11yLastFocused = lastFocused;
+  document.addEventListener('keydown', handleTab);
+}
+
+function releaseFocus(el) {
+  if (el._a11yTabHandler) {
+    document.removeEventListener('keydown', el._a11yTabHandler);
+    delete el._a11yTabHandler;
+  }
+  if (el._a11yLastFocused && typeof el._a11yLastFocused.focus === 'function') {
+    el._a11yLastFocused.focus();
+  }
+  delete el._a11yLastFocused;
+}
+window.trapFocus = trapFocus;
+window.releaseFocus = releaseFocus;
+
+// ─── UNIFIED ESCAPE-TO-CLOSE ──────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+
+  const dnaDetailModal = $('dnaDetailModal');
+  if (dnaDetailModal && dnaDetailModal.classList.contains('open')) { closeDnaDetail(); return; }
+
+  const aboutModal = $('aboutModal');
+  if (aboutModal && aboutModal.classList.contains('show')) { closeAbout(); return; }
+
+  const settingsPanel = $('settingsPanel');
+  if (settingsPanel && settingsPanel.classList.contains('open')) { closeSettings(); return; }
+
+  const countryModal = $('countryModal');
+  if (countryModal && countryModal.classList.contains('show')) { closeCountryModal(); return; }
+
+  const inviteOverlay = document.querySelector('.invite-prompt-overlay');
+  if (inviteOverlay) { releaseFocus(inviteOverlay); inviteOverlay.remove(); return; }
+
+  const dnaPanel = $('dnaPanel');
+  if (dnaPanel && dnaPanel.classList.contains('open')) { $('closeDNA')?.click(); return; }
+
+  const requestsPanel = $('requestsPanel');
+  if (requestsPanel && requestsPanel.classList.contains('open')) { $('closeRequests')?.click(); return; }
+
+  const guidedPanel = $('guidedPanel');
+  if (guidedPanel && guidedPanel.classList.contains('open')) { $('closeGuided')?.click(); return; }
+
+  const circlesPanel = document.getElementById('circlesPanel');
+  if (circlesPanel && circlesPanel.classList.contains('open')) { document.getElementById('closeCircles')?.click(); return; }
+
+  const tawPanel = document.getElementById('tawPanel');
+  if (tawPanel && tawPanel.classList.contains('open')) { document.getElementById('closeTaw')?.click(); return; }
+
+  if (isSanctuaryActive) { leaveSanctuary(); return; }
+});
+
 // ─── STORE ──────────────────────────────────────
 const STORE = 'palal_v32';
 const DEFAULT_STATE = {
@@ -82,8 +154,8 @@ const DEFAULT_STATE = {
   lastKnownCoords: null,
   sanctuarySessions: [],
   archetypeGender: 'male',
-  messiahName: 'Yeshua',
-  godName: 'Yahuah',
+  messiahName: 'Jesus',
+  godName: 'LORD',
   _guidedActive: false,
   _guidedPrayer: null,
   _guidedStep: 0
@@ -116,12 +188,12 @@ const SUPABASE_URL = 'https://xuvjajakligpdwsutwcb.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1dmphamFrbGlncGR3c3V0d2NiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NzY0NzAsImV4cCI6MjEwMzM1MjQ3MH0.SAdshaTMc8GPed_NMWBKUjeFx4ruXFRbCpcp0V2vYb0';
 const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-async function createCircle(name, description) {
+async function createCircle(name, description, isPrivate) {
   if (!supabaseClient) { toast('Circles unavailable right now'); return null; }
   const { data: { user } } = await supabaseClient.auth.getUser();
   if (!user) { toast('Sign in to create a circle'); return null; }
   const { data, error } = await supabaseClient.from('circles')
-    .insert({ name, description, created_by: user.id }).select().single();
+    .insert({ name, description, created_by: user.id, is_private: !!isPrivate }).select().single();
   if (error) { console.warn(error); toast('Could not create circle'); return null; }
   await supabaseClient.from('circle_members').insert({ circle_id: data.id, user_id: user.id });
   toast('Circle created');
@@ -159,6 +231,8 @@ async function getDiscoverCircles() {
   const { data, error } = await supabaseClient
     .from('circles')
     .select('id, name, description, circle_members(count), circle_prayers(count)')
+    .eq('is_daily_challenge', false)
+    .eq('is_private', false)
     .order('created_at', { ascending: false });
   if (error) { console.warn(error); return []; }
   return data.map(c => ({
@@ -183,6 +257,166 @@ async function getMyCircles() {
   }));
 }
 
+// ─── CIRCLE MODERATION (owner/admin) ─────────────
+async function getCircleMembers(circleId) {
+  if (!supabaseClient) return [];
+  const { data: circle } = await supabaseClient.from('circles').select('created_by').eq('id', circleId).single();
+  const { data, error } = await supabaseClient
+    .from('circle_members')
+    .select('user_id, is_admin, joined_at, profiles(display_name)')
+    .eq('circle_id', circleId)
+    .order('joined_at', { ascending: true });
+  if (error) { console.warn(error); return []; }
+  return data.map(m => ({
+    userId: m.user_id,
+    name: (m.profiles && m.profiles.display_name) || 'Member',
+    isOwner: circle && m.user_id === circle.created_by,
+    isAdmin: !!m.is_admin,
+    joinedAt: m.joined_at
+  }));
+}
+window.getCircleMembers = getCircleMembers;
+
+async function setMemberAdmin(circleId, userId, makeAdmin) {
+  const { error } = await supabaseClient.from('circle_members').update({ is_admin: makeAdmin }).eq('circle_id', circleId).eq('user_id', userId);
+  if (error) { toast('Could not update admin status'); return false; }
+  toast(makeAdmin ? 'Made admin' : 'Removed as admin');
+  return true;
+}
+
+async function removeMember(circleId, userId) {
+  const { error } = await supabaseClient.from('circle_members').delete().eq('circle_id', circleId).eq('user_id', userId);
+  if (error) { toast('Could not remove member'); return false; }
+  toast('Member removed');
+  return true;
+}
+
+// ─── DAILY PRAYER CHALLENGE ───────────────────────
+const DAILY_CHALLENGES_OT = [
+  { theme: 'petition',      ref: 'Psalm 34:4-6',    reflection: "What have you been afraid to ask Him for directly?" },
+  { theme: 'confession',    ref: 'Psalm 91:1-4',     reflection: "Have you doubted His protection this week — where, specifically?" },
+  { theme: 'thanksgiving',  ref: 'Psalm 103:1-5',    reflection: "What benefit of His have you forgotten to number lately?" },
+  { theme: 'intercession',  ref: 'Genesis 18:23-25', reflection: "Who would you plead for, even against the evidence?" },
+  { theme: 'lament',        ref: 'Psalm 13:1-2',     reflection: "What have you been afraid to say 'how long, LORD' about?" },
+  { theme: 'evangelism',    ref: 'Isaiah 6:8',       reflection: "Who has God already put in front of you to tell?" },
+  { theme: 'contemplation', ref: 'Psalm 131:1-2',    reflection: "What have you been striving after that was never yours to carry?" },
+  { theme: 'adoration',     ref: 'Psalm 8:3-4',      reflection: "When did creation last make you stop and wonder at Him?" }
+];
+
+const DAILY_CHALLENGES_NT = [
+  { theme: 'petition',      ref: 'Matthew 7:7-8',       reflection: "What door have you stopped knocking on?" },
+  { theme: 'confession',    ref: '1 John 1:8-9',        reflection: "What have you been calling 'not that bad' instead of naming it?" },
+  { theme: 'thanksgiving',  ref: '1 Thessalonians 5:18',reflection: "What circumstance are you struggling to thank Him IN, not just for?" },
+  { theme: 'intercession',  ref: 'Mark 12:31',          reflection: "Who's the neighbor you've been avoiding, not just failing to help?" },
+  { theme: 'lament',        ref: 'Matthew 26:38',       reflection: "What sorrow have you been managing instead of actually bringing to Him?" },
+  { theme: 'evangelism',    ref: 'Matthew 28:19-20',    reflection: "Who's the one person you could tell what He's done for you?" },
+  { theme: 'contemplation', ref: 'Matthew 6:6',         reflection: "When did you last pray with the door actually shut?" },
+  { theme: 'adoration',     ref: 'Revelation 4:11',     reflection: "What are you worshiping instead of Him this week, even unintentionally?" }
+];
+
+const THEME_SYMBOLS = {
+  petition: '◈', confession: '◐', thanksgiving: '✧', intercession: '✦',
+  lament: '◌', evangelism: '◇', contemplation: '○', adoration: '◎'
+};
+
+function getTodaysChallengeMeta() {
+  const start = Date.UTC(new Date().getUTCFullYear(), 0, 0);
+  const dayOfYear = Math.floor((Date.now() - start) / 86400000);
+  const isOT = dayOfYear % 2 === 0;
+  const pool = isOT ? DAILY_CHALLENGES_OT : DAILY_CHALLENGES_NT;
+  const idx = Math.floor(dayOfYear / 2) % pool.length;
+  return { ...pool[idx], testament: isOT ? 'Old Testament' : 'New Testament' };
+}
+
+async function fetchDailyChallengeVerse(ref) {
+  const today = new Date().toISOString().split('T')[0];
+  const cacheKey = 'palal_daily_verse_' + today;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+  try {
+    const res = await fetch('https://bible-api.com/' + encodeURIComponent(ref) + '?translation=kjv');
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    const text = (data.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) throw new Error('empty verse');
+    const result = { verse: text, ref: data.reference || ref };
+    try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch (e) {}
+    return result;
+  } catch (e) {
+    return { verse: null, ref: ref };
+  }
+}
+
+function getMsUntilNextChallenge() {
+  const now = new Date();
+  const nextUTCMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return nextUTCMidnight - now.getTime();
+}
+
+function formatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
+let dailyCountdownInterval = null;
+function startDailyCountdown(elementId) {
+  clearInterval(dailyCountdownInterval);
+  function tick() {
+    const target = document.getElementById(elementId);
+    if (!target) { clearInterval(dailyCountdownInterval); return; }
+    target.textContent = 'Next in ' + formatCountdown(getMsUntilNextChallenge());
+  }
+  tick();
+  dailyCountdownInterval = setInterval(tick, 1000);
+}
+function stopDailyCountdown() {
+  clearInterval(dailyCountdownInterval);
+  dailyCountdownInterval = null;
+}
+
+async function getDailyChallengeCircle() {
+  if (!supabaseClient) return null;
+  const { data, error } = await supabaseClient.from('circles').select('id, name, invite_code').eq('is_daily_challenge', true).single();
+  if (error) { console.warn(error); return null; }
+  return data;
+}
+
+async function shareContent(title, text, url) {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text, url });
+      return true;
+    } catch (e) {
+      if (e.name === 'AbortError') return false;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text + (url ? '\n\n' + url : ''));
+    toast('Copied — paste it anywhere');
+    return true;
+  } catch (e) {
+    toast('Could not share');
+    return false;
+  }
+}
+
+async function shareDailyChallenge() {
+  const challenge = getTodaysChallengeMeta();
+  const dailyCircle = await getDailyChallengeCircle();
+  if (!dailyCircle) { toast('Could not load today\'s challenge'); return; }
+  const verseResult = await fetchDailyChallengeVerse(challenge.ref);
+  const verseLine = verseResult.verse ? `"${verseResult.verse}" — ${verseResult.ref}` : verseResult.ref;
+  const link = getCircleInviteLink(dailyCircle.invite_code);
+  const shareText = `Today's Prayer Challenge (${challenge.testament}):\n\n${verseLine}\n\n${challenge.reflection}\n\nJoin me in prayer on Palal —`;
+  await shareContent("Today's Prayer Challenge", shareText, link);
+}
+window.shareDailyChallenge = shareDailyChallenge;
+
 window.createCircle = createCircle;
 window.joinCircle = joinCircle;
 window.postCirclePrayer = postCirclePrayer;
@@ -206,15 +440,38 @@ async function renderCircles() {
   const { data: { user } } = await supabaseClient.auth.getUser();
 
   if (currentCircleTab === 'discover') {
-    const [circles, myCircles] = await Promise.all([
+    const [circles, myCircles, dailyCircle] = await Promise.all([
       getDiscoverCircles(),
-      user ? getMyCircles() : Promise.resolve([])
+      user ? getMyCircles() : Promise.resolve([]),
+      getDailyChallengeCircle()
     ]);
     const joinedIds = new Set(myCircles.map(c => c.id));
 
-    let html = '<div class="circles-grid">';
+    let html = '';
+    if (dailyCircle) {
+      const challenge = getTodaysChallengeMeta();
+      html += `
+        <div class="daily-challenge-card" id="dailyChallengeCard" data-circle-id="${dailyCircle.id}">
+          <div class="daily-challenge-toprow">
+            <span class="daily-challenge-label">✦ Today's Prayer Challenge</span>
+            <span class="daily-challenge-countdown" id="dailyChallengeCountdown">—</span>
+          </div>
+          <div class="daily-challenge-tags">
+            <span class="daily-challenge-theme">${THEME_SYMBOLS[challenge.theme] || '◈'} ${challenge.theme}</span>
+            <span class="daily-challenge-testament">${challenge.testament}</span>
+          </div>
+          <div class="daily-challenge-verse" id="dailyChallengeVerse">Loading verse…</div>
+          <div class="daily-challenge-text">${escapeHtml(challenge.reflection)}</div>
+          <div class="daily-challenge-actions">
+            <button class="daily-challenge-btn" id="dailyChallengeBtn">Pray Today</button>
+            <button class="daily-challenge-share-btn" id="dailyChallengeShareBtn">Share</button>
+          </div>
+        </div>
+      `;
+    }
+    html += '<div class="circles-grid">';
     if (circles.length === 0) {
-      html = '<div class="dna-empty">No circles yet — be the first to start one.</div>';
+      html += '<div class="dna-empty">No circles yet — be the first to start one.</div>';
     } else {
       circles.forEach(c => {
         const joined = joinedIds.has(c.id);
@@ -249,9 +506,29 @@ async function renderCircles() {
         renderCircles();
       });
     });
+
+    const dailyBtn = document.getElementById('dailyChallengeBtn');
+    if (dailyBtn) {
+      dailyBtn.addEventListener('click', async function() {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) { toast('Sign in to join today\'s prayer'); return; }
+        openCircleRoom(document.getElementById('dailyChallengeCard').dataset.circleId);
+      });
+    }
+    const dailyShareBtn = document.getElementById('dailyChallengeShareBtn');
+    if (dailyShareBtn) dailyShareBtn.addEventListener('click', shareDailyChallenge);
+    if (dailyCircle) {
+      startDailyCountdown('dailyChallengeCountdown');
+      fetchDailyChallengeVerse(getTodaysChallengeMeta().ref).then(function(result) {
+        const verseEl = document.getElementById('dailyChallengeVerse');
+        if (!verseEl) return;
+        verseEl.textContent = result.verse ? '"' + result.verse + '" — ' + result.ref : '— ' + result.ref;
+      });
+    }
   }
 
   if (currentCircleTab === 'mine') {
+    stopDailyCountdown();
     if (!user) {
       container.innerHTML = '<div class="dna-empty">Sign in to see your circles.</div>';
       return;
@@ -302,8 +579,10 @@ function showInvitePrompt(circle) {
     </div>
   `;
   document.body.appendChild(overlay);
-  document.getElementById('inviteDeclineBtn').addEventListener('click', () => overlay.remove());
+  trapFocus(overlay);
+  document.getElementById('inviteDeclineBtn').addEventListener('click', () => { releaseFocus(overlay); overlay.remove(); });
   document.getElementById('inviteJoinBtn').addEventListener('click', async () => {
+    releaseFocus(overlay);
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) { toast('Sign in first, then reopen this invite link'); overlay.remove(); return; }
     await joinCircle(circle.id);
@@ -333,11 +612,80 @@ if (joinCodeBtn) {
 }
 
 // ─── CIRCLE ROOM (shared prayer feed) ─────────────
+let circleRoomChannel = null;
+function teardownCircleRoomChannel() {
+  stopDailyCountdown();
+  if (circleRoomChannel && supabaseClient) {
+    supabaseClient.removeChannel(circleRoomChannel);
+    circleRoomChannel = null;
+  }
+}
+
+async function renderCircleMembers(circleId) {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  const members = await getCircleMembers(circleId);
+  const myRole = members.find(m => m.userId === user?.id);
+  const iCanModerate = myRole && (myRole.isOwner || myRole.isAdmin);
+  const iAmOwner = myRole && myRole.isOwner;
+
+  const container = document.getElementById('circlesContent');
+  let html = `
+    <button class="settings-btn" id="membersBack" style="margin-bottom:0.75rem;">← Back to Circle</button>
+    <div class="circle-room-name" style="margin-bottom:0.75rem;">Members · ${members.length}</div>
+  `;
+  members.forEach(m => {
+    html += `
+      <div class="member-row">
+        <div class="member-info">
+          <span class="member-name">${escapeHtml(m.name)}</span>
+          ${m.isOwner ? '<span class="member-badge owner">Owner</span>' : m.isAdmin ? '<span class="member-badge admin">Admin</span>' : ''}
+        </div>
+        ${iAmOwner && !m.isOwner ? `
+          <div class="member-actions">
+            <button class="member-action-btn" data-toggle-admin="${m.userId}" data-current="${m.isAdmin ? '1' : '0'}">${m.isAdmin ? 'Remove admin' : 'Make admin'}</button>
+            <button class="member-action-btn danger" data-remove-member="${m.userId}">Remove</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+
+  document.getElementById('membersBack').addEventListener('click', () => openCircleRoom(circleId));
+
+  container.querySelectorAll('[data-toggle-admin]').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      await setMemberAdmin(circleId, this.dataset.toggleAdmin, this.dataset.current !== '1');
+      renderCircleMembers(circleId);
+    });
+  });
+  container.querySelectorAll('[data-remove-member]').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      if (btn.dataset.confirming === '1') {
+        await removeMember(circleId, this.dataset.removeMember);
+        renderCircleMembers(circleId);
+      } else {
+        btn.dataset.confirming = '1';
+        btn.textContent = 'Confirm?';
+        setTimeout(() => { btn.dataset.confirming = '0'; btn.textContent = 'Remove'; }, 3000);
+      }
+    });
+  });
+
+  return { iCanModerate };
+}
+window.renderCircleMembers = renderCircleMembers;
+
 async function openCircleRoom(circleId) {
+  teardownCircleRoomChannel();
   const { data: circle } = await supabaseClient.from('circles').select('*').eq('id', circleId).single();
   if (!circle) return;
   const { data: { user } } = await supabaseClient.auth.getUser();
   const prayers = await loadCirclePrayers(circleId);
+
+  const myMembers = await getCircleMembers(circleId);
+  const myMembership = myMembers.find(m => m.userId === user?.id);
+  const iCanModerate = myMembership && (myMembership.isOwner || myMembership.isAdmin);
 
   const prayerIds = prayers.map(p => p.id);
   let myReactions = new Set();
@@ -359,9 +707,23 @@ async function openCircleRoom(circleId) {
   let html = `
     <button class="settings-btn" id="circleRoomBack" style="margin-bottom:0.75rem;">← Back to My Circles</button>
     <div class="circle-room-header">
-      <div class="circle-room-name">◈ ${escapeHtml(circle.name)}</div>
-      <button class="settings-btn" id="circleShareBtn">✦ Share invite link</button>
+      <div class="circle-room-name" id="circleRoomNameDisplay">◈ ${escapeHtml(circle.name)}</div>
+      <div style="display:flex;gap:0.375rem;">
+        <button class="circle-rename-btn" id="circleMembersBtn">Members</button>
+        ${circle.created_by === user?.id ? '<button class="circle-rename-btn" id="circleRenameBtn">Rename</button>' : ''}
+        <button class="circle-rename-btn" id="circleLeaveBtn">Leave</button>
+        <button class="settings-btn" id="circleShareBtn">✦ Share invite link</button>
+      </div>
     </div>
+    ${circle.is_daily_challenge ? `
+      <div class="daily-challenge-tags" style="justify-content:center;margin-bottom:0.375rem;">
+        <span class="daily-challenge-theme">${THEME_SYMBOLS[getTodaysChallengeMeta().theme] || '◈'} ${getTodaysChallengeMeta().theme}</span>
+        <span class="daily-challenge-testament">${getTodaysChallengeMeta().testament}</span>
+      </div>
+      <div class="daily-challenge-verse" id="circleRoomDailyVerse">Loading verse…</div>
+      <div class="daily-challenge-text" style="margin-bottom:0.5rem;">${escapeHtml(getTodaysChallengeMeta().reflection)}</div>
+      <button class="daily-challenge-share-btn" id="circleRoomDailyShareBtn" style="margin-bottom:0.75rem;">Share Today's Challenge</button>
+    ` : ''}
     <div class="circle-room-feed">
   `;
   if (prayers.length === 0) {
@@ -369,6 +731,7 @@ async function openCircleRoom(circleId) {
   } else {
     prayers.forEach(p => {
       const iPrayed = myReactions.has(p.id);
+      const isMine = p.user_id === user?.id;
       html += `
         <div class="circle-room-item">
           <div class="circle-room-text">"${escapeHtml(p.text)}"</div>
@@ -378,7 +741,9 @@ async function openCircleRoom(circleId) {
               <button class="circle-pray-btn ${iPrayed ? 'prayed' : ''}" data-prayer-id="${p.id}" ${iPrayed ? 'disabled' : ''}>
                 <svg class="prayer-flame-icon" viewBox="0 0 16 16" width="9" height="9"><path d="M8 1c1.5 3 3 4.5 3 7a3 3 0 1 1-6 0c0-1 .5-2 1-2.5-.2 1 .3 1.5 1 1.5-.5-2 .3-4 1-6z" fill="none" stroke="currentColor" stroke-width="1"/></svg> ${counts[p.id] || 0}
               </button>
-              ${p.user_id === user?.id ? `<button class="circle-archive-btn" data-archive-id="${p.id}">Archive</button>` : ''}
+              ${isMine ? `<button class="circle-archive-btn" data-answered-id="${p.id}" data-answered-state="${p.answered ? '1' : '0'}">${p.answered ? 'Unmark' : 'Mark answered'}</button>` : ''}
+              <button class="circle-archive-btn" data-share-prayer-text="${escapeHtml(p.text)}">Share</button>
+              ${(isMine || iCanModerate) ? `<button class="circle-archive-btn" data-archive-id="${p.id}">Archive</button>` : ''}
             </div>
           </div>
         </div>
@@ -393,17 +758,78 @@ async function openCircleRoom(circleId) {
   `;
   container.innerHTML = html;
 
-  document.getElementById('circleRoomBack').addEventListener('click', () => { currentCircleTab = 'mine'; renderCircles(); });
+  if (circle.is_daily_challenge) {
+    fetchDailyChallengeVerse(getTodaysChallengeMeta().ref).then(function(result) {
+      const verseEl = document.getElementById('circleRoomDailyVerse');
+      if (!verseEl) return;
+      verseEl.textContent = result.verse ? '"' + result.verse + '" — ' + result.ref : '— ' + result.ref;
+    });
+  }
+  const circleRoomDailyShareBtn = document.getElementById('circleRoomDailyShareBtn');
+  if (circleRoomDailyShareBtn) circleRoomDailyShareBtn.addEventListener('click', shareDailyChallenge);
+
+  document.getElementById('circleRoomBack').addEventListener('click', () => { teardownCircleRoomChannel(); currentCircleTab = 'mine'; renderCircles(); });
   document.getElementById('circleShareBtn').addEventListener('click', () => {
     const link = getCircleInviteLink(circle.invite_code);
     navigator.clipboard.writeText(link).then(() => toast('Invite link copied'));
   });
+
+  document.querySelectorAll('[data-share-prayer-text]').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const link = getCircleInviteLink(circle.invite_code);
+      const shareText = `"${this.dataset.sharePrayerText}"\n\n— shared from ${circle.name} on Palal`;
+      await shareContent('A prayer from ' + circle.name, shareText, link);
+    });
+  });
+
+  const membersBtn = document.getElementById('circleMembersBtn');
+  if (membersBtn) membersBtn.addEventListener('click', () => { teardownCircleRoomChannel(); renderCircleMembers(circleId); });
+
+  const leaveBtn = document.getElementById('circleLeaveBtn');
+  if (leaveBtn) {
+    leaveBtn.addEventListener('click', function() {
+      if (this.dataset.confirming === '1') {
+        supabaseClient.from('circle_members').delete().eq('circle_id', circleId).eq('user_id', user.id).then(() => {
+          toast('Left circle');
+          teardownCircleRoomChannel();
+          currentCircleTab = 'mine';
+          renderCircles();
+        });
+      } else {
+        this.dataset.confirming = '1';
+        this.textContent = 'Confirm leave?';
+        setTimeout(() => { this.dataset.confirming = '0'; this.textContent = 'Leave'; }, 3000);
+      }
+    });
+  }
+
+  const renameBtn = document.getElementById('circleRenameBtn');
+  if (renameBtn) {
+    renameBtn.addEventListener('click', async function() {
+      const nameDisplay = document.getElementById('circleRoomNameDisplay');
+      nameDisplay.innerHTML = `<input type="text" id="circleRenameInput" class="circle-rename-input" value="${escapeHtml(circle.name)}">`;
+      const input = document.getElementById('circleRenameInput');
+      input.focus();
+      input.addEventListener('keypress', async (e) => {
+        if (e.key === 'Enter') {
+          const newName = input.value.trim();
+          if (newName) {
+            await supabaseClient.from('circles').update({ name: newName }).eq('id', circleId);
+            toast('Circle renamed');
+          }
+          openCircleRoom(circleId);
+        }
+      });
+    });
+  }
+
   document.getElementById('submitCirclePrayerBtn').addEventListener('click', async () => {
     const input = document.getElementById('newCirclePrayerInput');
     if (!input.value.trim()) return;
     await postCirclePrayer(circleId, input.value.trim());
     openCircleRoom(circleId);
   });
+
   document.querySelectorAll('.circle-pray-btn').forEach(btn => {
     btn.addEventListener('click', async function() {
       const { data: { user } } = await supabaseClient.auth.getUser();
@@ -412,12 +838,28 @@ async function openCircleRoom(circleId) {
       openCircleRoom(circleId);
     });
   });
-  document.querySelectorAll('.circle-archive-btn').forEach(btn => {
+
+  document.querySelectorAll('[data-archive-id]').forEach(btn => {
     btn.addEventListener('click', async function() {
       await supabaseClient.from('circle_prayers').update({ archived: true }).eq('id', this.dataset.archiveId);
       openCircleRoom(circleId);
     });
   });
+
+  document.querySelectorAll('[data-answered-id]').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const newState = this.dataset.answeredState !== '1';
+      await supabaseClient.from('circle_prayers').update({ answered: newState }).eq('id', this.dataset.answeredId);
+      openCircleRoom(circleId);
+    });
+  });
+
+  if (supabaseClient) {
+    circleRoomChannel = supabaseClient
+      .channel('circle_room_' + circleId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'circle_prayers', filter: 'circle_id=eq.' + circleId }, () => openCircleRoom(circleId))
+      .subscribe();
+  }
 }
 window.openCircleRoom = openCircleRoom;
 
@@ -428,6 +870,10 @@ function showCircleCreateForm() {
     <div class="circle-create-form">
       <input type="text" id="newCircleName" placeholder="Circle name" maxlength="60" />
       <textarea id="newCircleDesc" placeholder="What's this circle for? (optional)" maxlength="140" rows="2"></textarea>
+      <label class="circle-private-toggle">
+        <input type="checkbox" id="newCirclePrivate" />
+        <span>Private — invite-only, hidden from Discover</span>
+      </label>
       <div style="display:flex;gap:0.5rem;">
         <button class="circle-create-btn" id="circleCreateConfirm" style="flex:1;">Create</button>
         <button class="circle-create-btn" id="circleCreateCancel" style="flex:1;background:var(--gold-dim);color:var(--gold);border:0.5px solid var(--gold-line);">Cancel</button>
@@ -439,8 +885,9 @@ function showCircleCreateForm() {
   document.getElementById('circleCreateConfirm').addEventListener('click', async function() {
     const name = document.getElementById('newCircleName').value.trim();
     const desc = document.getElementById('newCircleDesc').value.trim();
+    const isPrivate = document.getElementById('newCirclePrivate').checked;
     if (!name) { toast('Give your circle a name'); return; }
-    await createCircle(name, desc);
+    await createCircle(name, desc, isPrivate);
     currentCircleTab = 'mine';
     renderCircles();
   });
@@ -472,6 +919,7 @@ if (navCircles) {
 const closeCircles = document.getElementById('closeCircles');
 if (closeCircles) {
   closeCircles.addEventListener('click', function() {
+    teardownCircleRoomChannel();
     document.getElementById('circlesPanel')?.classList.remove('open');
     document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('navWorld')?.classList.add('active');
@@ -787,40 +1235,6 @@ const CITY_DATA = [
 ];
 
 
-function getCityHeadline(cityName) {
-  const headlines = [
-    'Housing crisis deepens',
-    'Drought threatens water supply',
-    'Community leaders call for unity',
-    'Young families leaving the city',
-    'Elderly face isolation',
-    'Peace and reconciliation needed',
-    'Local economy struggling',
-    'Climate change affects crops',
-    'Public services under pressure',
-    'Healthcare system strained',
-    'Education system needs reform',
-    'Refugees seeking shelter',
-    'Religious freedom under threat',
-    'Rising cost of living',
-    'Political division in the region'
-  ];
-  const index = cityName.length % headlines.length;
-  return headlines[index];
-}
-
-function getCityWeather() {
-  const conditions = ['Clear', 'Cloudy', 'Light Rain', 'Overcast', 'Mist', 'Sunny'];
-  return {
-    temp: Math.floor(Math.random() * 15 + 10),
-    condition: conditions[Math.floor(Math.random() * conditions.length)]
-  };
-}
-
-function getPrayerCount(cityName) {
-  return Math.floor(Math.random() * 400 + 50 + (cityName.length * 7));
-}
-
 // ─── COUNTRY CAPITALS ──────────────────────────
 const COUNTRY_CAPITALS = {
   'za': { name: 'Pretoria', lat: -25.7479, lng: 28.2293 },
@@ -991,9 +1405,9 @@ function addCrisisMarker(point) {
   const idArg = typeof point.id === 'number' ? point.id : `'${point.id}'`;
 
   marker.bindPopup(`
-    <div class="map-popup-title">${point.country}</div>
+    <div class="map-popup-title">${escapeHtml(point.country)}</div>
     <div class="map-popup-tag alert">${point.level}${point.isLive ? ' · live' : ''}</div>
-    <div class="map-popup-quote">"${point.prayer}"</div>
+    <div class="map-popup-quote">"${escapeHtml(point.prayer)}"</div>
     <button class="map-popup-btn" onclick="prayForMapPoint(${idArg})">Pray for this</button>
     <div class="map-popup-count">${count} intercessors</div>
   `, { minWidth: 160, maxWidth: 200 });
@@ -1064,9 +1478,11 @@ function openCountryModal(countryCode) {
   document.querySelectorAll('.country-modal-tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.tab === 'overview');
   });
+  trapFocus(modal);
 }
 
 function closeCountryModal() {
+  releaseFocus($('countryModal'));
   $('countryModal').classList.remove('show');
 }
 
@@ -1113,13 +1529,13 @@ function renderModalTab(tab, countryCode) {
         <div class="section">
           <div class="section-title">Prayer Points</div>
           ${profile.prayerPoints.map(p => `
-            <div class="prayer-point">${p}</div>
+            <div class="prayer-point">${escapeHtml(p)}</div>
           `).join('')}
         </div>
         <div class="section">
           <div class="section-title">Testimonies</div>
           ${D.entries.filter(e => e.city === profile.name && e.testimony).slice(0, 3).map(e => `
-            <div class="testimony">"${e.testimony}"<div class="from">— ${e.timestamp ? new Date(e.timestamp).toLocaleDateString() : 'recent'}</div></div>
+            <div class="testimony">"${escapeHtml(e.testimony)}"<div class="from">— ${e.timestamp ? new Date(e.timestamp).toLocaleDateString() : 'recent'}</div></div>
           `).join('') || '<div style="font-size:0.4375rem;color:var(--ink-mid);opacity:0.4;font-weight:300;">No testimonies yet. Be the first to share.</div>'}
         </div>
       `;
@@ -1133,9 +1549,9 @@ function renderModalTab(tab, countryCode) {
           ${countryEntries.length === 0 ? '<div style="font-size:0.4375rem;color:var(--ink-mid);opacity:0.4;font-weight:300;">No prayers recorded for this country yet.</div>' :
           countryEntries.slice(0, 10).map(e => `
             <div class="prayer-point">
-              "${e.text}"
-              <span class="cite">${e.mode} · ${e.timestamp ? new Date(e.timestamp).toLocaleDateString() : 'recent'}${e.answered ? ' · answered' : ''}</span>
-              ${e.testimony ? `<div class="testimony" style="margin-top:0.25rem;">"${e.testimony}"</div>` : ''}
+              "${escapeHtml(e.text)}"
+              <span class="cite">${escapeHtml(e.mode)} · ${e.timestamp ? new Date(e.timestamp).toLocaleDateString() : 'recent'}${e.answered ? ' · answered' : ''}</span>
+              ${e.testimony ? `<div class="testimony" style="margin-top:0.25rem;">"${escapeHtml(e.testimony)}"</div>` : ''}
             </div>
           `).join('')}
         </div>
@@ -1191,16 +1607,16 @@ if (modalPrayBtn) {
     if (!name) return;
     closeCountryModal();
 
-    const city = { name: name, weather: getCityWeather(), headline: getCityHeadline(name) };
+    const city = { name: name };
     selectedCity = city;
     D.currentCity = city;
 
     const verseText = $('verseText');
     const verseRef = $('verseRef');
     const cityContext = $('cityContext');
-    if (verseText) verseText.textContent = '"Pray for ' + name + ', for ' + city.headline.toLowerCase() + '."';
+    if (verseText) verseText.textContent = '"Pray for ' + name + '."';
     if (verseRef) verseRef.textContent = name;
-    if (cityContext) cityContext.textContent = name + ' · ' + city.weather.temp + '° ' + city.weather.condition;
+    if (cityContext) cityContext.textContent = name;
 
     const mapPanel = $('mapPanel');
     const stageAxis = $('stageAxis');
@@ -1209,7 +1625,7 @@ if (modalPrayBtn) {
 
     toast('Praying for ' + name);
 
-    D.currentCity = { name, weather: city.weather, headline: city.headline };
+    D.currentCity = { name };
     saveLocal();
 
     document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
@@ -1359,6 +1775,7 @@ function renderDNA() {
   renderDnaThemeBars();
   renderModeBreakdown();
   renderConstellation();
+  renderCompanionCard();
 
   if (total === 0) {
     listEl.innerHTML = `${EMPTY_NETWORK_SVG}<div class="dna-empty">Start praying to see your DNA.</div>`;
@@ -1566,6 +1983,160 @@ function setArchetypeGender(gender) {
   }
 }
 
+// ─── SEASONAL COMPANION ───────────────────────────
+const SEASONAL_COMPANIONS = [
+  {
+    season: 'Winter',
+    scripture: {
+      name: 'Solomon', symbol: '♛', era: '1 Kings 3',
+      bio: "Given the chance to ask God for anything, Solomon asked for wisdom to govern well rather than wealth or long life — and it became the prayer he's remembered for.",
+      prayer: "Give me an understanding heart, that I may know how to walk rightly in what You've set before me — not more than I need, only wisdom enough for today."
+    },
+    contemporary: {
+      name: 'Dietrich Bonhoeffer', symbol: '✦', era: '1906–1945',
+      bio: "A German pastor and theologian who continued praying and leading worship from prison during the Nazi regime, until his execution weeks before the war's end.",
+      prayer: "Even here, especially here, let my prayer not grow smaller than my circumstances. Teach me to trust You when trusting costs something real."
+    }
+  },
+  {
+    season: 'Spring',
+    scripture: {
+      name: 'David', symbol: '◈', era: 'Psalms',
+      bio: "A shepherd who became king, David's prayers — recorded across the Psalms — hold grief, fear, and joy without smoothing any of it over.",
+      prayer: "Search me and know my heart today. I won't pretend it's steadier than it is — but I bring it to You exactly as it is."
+    },
+    contemporary: {
+      name: 'Amy Carmichael', symbol: '✧', era: '1867–1951',
+      bio: "An Irish missionary who spent over fifty years in India without furlough, rescuing children from exploitation and writing prayers that never lost their tenderness despite decades of hard work.",
+      prayer: "Let me stay soft where it would be easier to grow hard. Give me strength for today's work and love enough to still call it a joy."
+    }
+  },
+  {
+    season: 'Summer',
+    scripture: {
+      name: 'Nehemiah', symbol: '◇', era: 'Nehemiah 1',
+      bio: "On hearing that Jerusalem's walls lay in ruins, Nehemiah wept, fasted, prayed for days — and then got up and did something about it.",
+      prayer: "Let my prayer not stop at feeling something. Show me what You'd have me actually do, and give me the courage to begin it."
+    },
+    contemporary: {
+      name: 'George Müller', symbol: '○', era: '1805–1898',
+      bio: "Müller ran orphanages in England for decades without ever asking for money publicly — praying instead, and recording thousands of specific answered prayers for provision.",
+      prayer: "I bring You this need plainly, without hedging it. I'll wait on Your answer rather than force one of my own."
+    }
+  },
+  {
+    season: 'Fall',
+    scripture: {
+      name: 'Daniel', symbol: '◐', era: 'Daniel 6',
+      bio: "Even under a decree that made prayer a capital offense, Daniel kept his window open three times a day, praying exactly as he always had.",
+      prayer: "Let nothing around me be able to move what happens between You and me. This hour is Yours regardless of what today has cost."
+    },
+    contemporary: {
+      name: 'Susanna Wesley', symbol: '◎', era: '1669–1742',
+      bio: "Raising nineteen children with almost no privacy, Susanna Wesley would pull her apron over her head at a set hour each day — her children learned that meant she was praying, and not to be disturbed.",
+      prayer: "Carve out this small space in a day that has no space left. Meet me here, even for a few minutes, even like this."
+    }
+  }
+];
+
+function getCurrentSeasonIndex() {
+  const month = new Date().getMonth();
+  return Math.floor(month / 3);
+}
+function getCurrentSeasonId() {
+  const now = new Date();
+  return now.getFullYear() + '_' + getCurrentSeasonIndex();
+}
+function getCurrentSeasonData() {
+  return SEASONAL_COMPANIONS[getCurrentSeasonIndex()];
+}
+
+function getChosenCompanion() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('palal_companion_choice_v1') || 'null');
+    if (stored && stored.seasonId === getCurrentSeasonId()) {
+      return getCurrentSeasonData()[stored.type];
+    }
+  } catch (e) {}
+  return null;
+}
+
+function setChosenCompanion(type) {
+  try {
+    localStorage.setItem('palal_companion_choice_v1', JSON.stringify({ seasonId: getCurrentSeasonId(), type }));
+  } catch (e) {}
+  renderCompanionCard();
+}
+window.setChosenCompanion = setChosenCompanion;
+
+function renderCompanionCard() {
+  const container = document.getElementById('companionSection');
+  if (!container) return;
+  const season = getCurrentSeasonData();
+  const chosen = getChosenCompanion();
+
+  if (!chosen) {
+    container.innerHTML = `
+      <div class="companion-title">Companion for ${season.season}</div>
+      <div class="companion-choose-desc">A voice to walk alongside you this season — choose one:</div>
+      <div class="companion-choice-grid">
+        <button class="companion-choice-btn" onclick="setChosenCompanion('scripture')">
+          <span class="companion-choice-symbol">${season.scripture.symbol}</span>
+          <span class="companion-choice-name">${season.scripture.name}</span>
+          <span class="companion-choice-era">${season.scripture.era}</span>
+        </button>
+        <button class="companion-choice-btn" onclick="setChosenCompanion('contemporary')">
+          <span class="companion-choice-symbol">${season.contemporary.symbol}</span>
+          <span class="companion-choice-name">${season.contemporary.name}</span>
+          <span class="companion-choice-era">${season.contemporary.era}</span>
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="companion-title">Your Companion for ${season.season}</div>
+    <div class="companion-card">
+      <div class="companion-symbol">${chosen.symbol}</div>
+      <div class="companion-name">${chosen.name}</div>
+      <div class="companion-era">${chosen.era}</div>
+      <div class="companion-bio">${chosen.bio}</div>
+      <button class="companion-pray-btn" id="companionPrayBtn">Pray in their spirit</button>
+      <button class="companion-change-btn" id="companionChangeBtn">Change companion</button>
+    </div>
+  `;
+
+  const prayBtn = document.getElementById('companionPrayBtn');
+  if (prayBtn) prayBtn.addEventListener('click', () => enterCompanionPrayer(chosen));
+
+  const changeBtn = document.getElementById('companionChangeBtn');
+  if (changeBtn) {
+    changeBtn.addEventListener('click', () => {
+      try { localStorage.removeItem('palal_companion_choice_v1'); } catch (e) {}
+      renderCompanionCard();
+    });
+  }
+}
+window.renderCompanionCard = renderCompanionCard;
+
+function enterCompanionPrayer(companion) {
+  const dnaPanel = $('dnaPanel');
+  if (dnaPanel) dnaPanel.classList.remove('open');
+  document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+  const navWorld2 = $('navWorld');
+  if (navWorld2) navWorld2.classList.add('active');
+
+  enterSanctuary('contemplation');
+  const solVerse = $('solVerse');
+  const solRef = $('solRef');
+  const text = replaceGodName(replaceMessiahName(companion.prayer));
+  if (solVerse) solVerse.textContent = '"' + text + '"';
+  if (solRef) solRef.textContent = '— in the spirit of ' + companion.name;
+
+  toast('✦ Praying with ' + companion.name);
+}
+
 // ─── DNA DETAIL MODAL ────────────────────────────
 let dnaDetailId = null;
 let dnaDetailPendingAnswered = false;
@@ -1595,12 +2166,12 @@ window.openDnaDetail = function(id) {
   renderDnaDetailConnections(entry);
 
   const modal = $('dnaDetailModal');
-  if (modal) modal.classList.add('open');
+  if (modal) { modal.classList.add('open'); trapFocus(modal); }
 };
 
 window.closeDnaDetail = function() {
   const modal = $('dnaDetailModal');
-  if (modal) modal.classList.remove('open');
+  if (modal) { releaseFocus(modal); modal.classList.remove('open'); }
   dnaDetailId = null;
 };
 
@@ -1944,7 +2515,6 @@ function initMap() {
         // Fly to the user's actual live coordinates, not just the nearest
         // predefined city, so this reflects where they really are right now.
         mapInstance.flyTo([pos.coords.latitude, pos.coords.longitude], 9, { duration: 1.4 });
-        if (homeCity) showCityOverlay(homeCity);
         updateHomeMarkers();
         resolveUserRegion(pos.coords.latitude, pos.coords.longitude).then(function(region) {
           showRegionWelcome(region);
@@ -1952,7 +2522,7 @@ function initMap() {
           // is right now, instead of leaving a stale, previously-selected city.
           const liveName = region && (region.cityName || region.countryName);
           if (liveName) {
-            D.currentCity = { name: liveName, weather: getCityWeather(), headline: getCityHeadline(liveName) };
+            D.currentCity = { name: liveName };
             saveLocal();
           }
         });
@@ -1968,7 +2538,6 @@ function initMap() {
   } else if (homeCity) {
     setTimeout(function() {
       mapInstance.setView([homeCity.lat, homeCity.lng], 10);
-      showCityOverlay(homeCity);
       updateHomeMarkers();
     }, 800);
   }
@@ -2008,7 +2577,7 @@ window.prayForCountry = function(countryCode) {
   toast('Prayed for ' + profile.name);
   vibrate();
 
-  D.currentCity = { name: profile.name, weather: getCityWeather(), headline: profile.prayerPoints[0] };
+  D.currentCity = { name: profile.name, headline: profile.prayerPoints[0] };
   selectedCity = { name: profile.name };
 
   const verseText = $('verseText');
@@ -2094,22 +2663,10 @@ function setHomeCity(city) {
 }
 
 function showCityOverlay(city) {
-  const weather = getCityWeather();
-  const headline = getCityHeadline(city.name);
-  const prayerCount = getPrayerCount(city.name);
-
   const cityName = $('cityName');
-  const cityTemp = $('cityTemp');
-  const cityWeather = $('cityWeather');
-  const cityHeadline = $('cityHeadline');
-  const cityMeta = $('cityMeta');
   const homeBadge = $('cityHomeBadge');
 
   if (cityName) cityName.textContent = city.name;
-  if (cityTemp) cityTemp.textContent = weather.temp + '°';
-  if (cityWeather) cityWeather.textContent = weather.condition;
-  if (cityHeadline) cityHeadline.textContent = '"' + headline + '"';
-  if (cityMeta) cityMeta.textContent = prayerCount + ' prayers · ' + Math.floor(prayerCount / 20) + ' intercessors';
 
   if (homeCity && homeCity.name === city.name) {
     if (homeBadge) homeBadge.textContent = 'home';
@@ -2118,7 +2675,7 @@ function showCityOverlay(city) {
   }
 
   selectedCity = city;
-  D.currentCity = { name: city.name, weather, headline, prayerCount };
+  D.currentCity = { name: city.name };
 
   const overlay = $('cityOverlay');
   if (overlay) {
@@ -2151,15 +2708,13 @@ function enterPrayerWithCity() {
 
   const city = selectedCity || D.currentCity;
   const name = city.name || 'Your City';
-  const weather = city.weather || getCityWeather();
-  const headline = city.headline || getCityHeadline(name);
 
   const verseText = $('verseText');
   const verseRef = $('verseRef');
   const cityContext = $('cityContext');
-  if (verseText) verseText.textContent = '"Pray for ' + name + ', for ' + headline.toLowerCase() + '."';
+  if (verseText) verseText.textContent = '"Pray for ' + name + '."';
   if (verseRef) verseRef.textContent = name;
-  if (cityContext) cityContext.textContent = name + ' · ' + weather.temp + '° ' + weather.condition;
+  if (cityContext) cityContext.textContent = name;
 
   const mapPanel = $('mapPanel');
   const stageAxis = $('stageAxis');
@@ -2170,7 +2725,7 @@ function enterPrayerWithCity() {
 
   toast('Praying for ' + name);
 
-  D.currentCity = { name, weather, headline };
+  D.currentCity = { name };
   saveLocal();
 
   document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
@@ -2814,7 +3369,7 @@ window.prayForMapPoint = function(id) {
   toast('Prayed for ' + point.country);
   vibrateForMode('intercession');
 
-  D.currentCity = { name: point.country, weather: getCityWeather(), headline: point.prayer };
+  D.currentCity = { name: point.country, headline: point.prayer };
   selectedCity = { name: point.country };
 
   const verseText = $('verseText');
@@ -3165,6 +3720,7 @@ const TUTORIAL_SEEN_KEY = 'palal_tutorial_seen_v4';
 (function() {
   const STEPS = [
     { target: null, pos: 'center', icon: '✦', title: 'Welcome to Palal', body: 'A sacred space to pray, listen, and stand in the gap. Let\'s take a quick look around.' },
+    { target: '#settingsLink', pos: 'below', icon: '⚙', title: 'Speak your way', body: 'Prefer Yahuah & Yahusha, Yahweh & Yeshua, or something else? Change how God and the Messiah are named anytime in Settings.' },
     { target: '#modeWindow', pos: 'below', icon: '◈', title: 'Choose your mode', body: 'Petition, Lament, Thanksgiving, Adoration, or Confession — swipe to choose how you come before God today.' },
     { target: '#nexusBtn', pos: 'below', icon: '✦', title: 'Hold to enter', body: 'Type your prayer, then press and hold the circle until it fills. You\'ll enter the Sanctuary — a still space with rotating scripture.' },
     { target: '#scriptureBlock', pos: 'above', icon: '✦', title: 'Living scripture', body: 'A verse aligned with your current mode appears here. Tap it any time for a new one.' },
@@ -3333,7 +3889,7 @@ if (supabaseClient) {
 
 // ─── MESSIAH NAME ──────────────────────────────
 function getMessiahName() {
-  return D.messiahName || 'Yeshua';
+  return D.messiahName || 'Jesus';
 }
 
 function replaceMessiahName(text) {
@@ -3372,7 +3928,7 @@ function updateMessiahNameInUI() {
 
 // ─── GOD NAME ──────────────────────────────────
 function getGodName() {
-  return D.godName || 'Yahuah';
+  return D.godName || 'LORD';
 }
 
 function replaceGodName(text) {
@@ -3424,12 +3980,14 @@ function openSettings() {
   if (panel) {
     panel.classList.add('open');
     updateSettingsUI();
+    trapFocus(panel);
   }
 }
 
 function closeSettings() {
   const panel = $('settingsPanel');
   if (panel) {
+    releaseFocus(panel);
     panel.classList.remove('open');
   }
 }
@@ -3550,12 +4108,14 @@ function openAbout() {
     const godName = getGodName();
     const aboutGodName = document.getElementById('aboutGodName');
     if (aboutGodName) aboutGodName.textContent = godName;
+    trapFocus(modal);
   }
 }
 
 function closeAbout() {
   const modal = $('aboutModal');
   if (modal) {
+    releaseFocus(modal);
     modal.classList.remove('show');
   }
 }

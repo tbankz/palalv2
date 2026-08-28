@@ -122,11 +122,8 @@
     <div id="cityOverlay">
       <button class="city-close-overlay" id="closeOverlayBtn">✕</button>
       <div class="city-name" id="cityName">City</div>
-      <div class="city-temp" id="cityTemp">18°</div>
-      <div class="city-weather" id="cityWeather">Clear</div>
       <div class="city-divider"></div>
-      <div class="city-headline" id="cityHeadline">"Pray for this city"</div>
-      <div class="city-meta" id="cityMeta">0 prayers · 0 intercessors</div>
+      <div class="city-headline">Lift this city in prayer</div>
       <div class="city-home-badge" id="cityHomeBadge"></div>
       <div class="city-pray-hint">tap to pray</div>
     </div>
@@ -281,6 +278,7 @@
           <button class="dna-close" id="closeDNA" aria-label="Close DNA">✕</button>
         </div>
       </div>
+      <div class="identity-caption">Identity reflects how often you pray</div>
       <div class="dna-search-wrap">
         <span class="dna-search-icon">⌕</span>
         <input type="text" class="dna-search-box" id="dnaSearchInput" placeholder="Search prayers or themes…" autocomplete="off" />
@@ -312,7 +310,7 @@
         </div>
         <div class="stars-caption">"Look toward heaven, and number the stars…" — Genesis 15:5</div>
         <div class="archetype-display">
-          <span class="archetype-label">Your posture echoes</span>
+          <span class="archetype-label">Your posture echoes — reflects time spent still, not how often you pray</span>
           <span class="archetype-name" id="archetypeName">The Ethiopian Eunuch</span>
           <span class="archetype-ref" id="archetypeRef">Acts 8:27-38</span>
           <div class="archetype-gender-toggle" id="archetypeGenderToggle">
@@ -321,6 +319,8 @@
           </div>
         </div>
       </div>
+
+      <div class="companion-section" id="companionSection"></div>
 
       <div class="settings-link" id="settingsLinkDNA">⚙ Settings</div>
     </div>
@@ -376,23 +376,25 @@
 
     <!-- ─── SANCTUARY ─── -->
     <div class="sanctuary-overlay" id="sanctuary">
-      <div class="sol-orb-field"><div class="sol-orb"></div></div>
-      <div class="sol-scripture">
-        <div class="sol-verse" id="solVerse">"Be still, and know that I am God."</div>
-        <div class="sol-ref" id="solRef">Psalm 46:10</div>
-        <div class="sol-city-context" id="solCityContext"></div>
+      <div class="sol-hero">
+        <div class="sol-orb-field"><div class="sol-orb"></div></div>
+        <div class="sol-scripture">
+          <div class="sol-verse" id="solVerse">"Be still, and know that I am God."</div>
+          <div class="sol-ref" id="solRef">Psalm 46:10</div>
+          <div class="sol-city-context" id="solCityContext"></div>
 
-        <div class="sanctuary-mode-selector" id="sanctuaryModeSelector">
-          <div class="current" id="sanctuaryModeCurrent" onclick="toggleModeMenu()">
-            <span class="symbol">◈</span> Petition <span class="caret">▾</span>
+          <div class="sanctuary-mode-selector" id="sanctuaryModeSelector">
+            <div class="current" id="sanctuaryModeCurrent" onclick="toggleModeMenu()">
+              <span class="symbol">◈</span> Petition <span class="caret">▾</span>
+            </div>
+            <div class="sanctuary-mode-menu" id="sanctuaryModeMenu"></div>
           </div>
-          <div class="sanctuary-mode-menu" id="sanctuaryModeMenu"></div>
-        </div>
 
-        <div class="confession-capsule" id="confCapsule">
-          <input class="conf-input" id="confInput" type="text" placeholder="speak it… enter to burn" autocomplete="off" aria-label="Write your confession" />
-          <div class="ash-strip" id="ashStrip"></div>
-          <div class="conf-note"><span id="confNote">0</span> burnt</div>
+          <div class="confession-capsule" id="confCapsule">
+            <input class="conf-input" id="confInput" type="text" placeholder="speak it… enter to burn" autocomplete="off" aria-label="Write your confession" />
+            <div class="ash-strip" id="ashStrip"></div>
+            <div class="conf-note"><span id="confNote">0</span> burnt</div>
+          </div>
         </div>
       </div>
 
@@ -428,7 +430,8 @@
               <span class="preset-select">[ Select ]</span>
             </button>
             
-            <button class="preset-btn" data-god="LORD" data-messiah="Jesus">
+            <button class="preset-btn recommended" data-god="LORD" data-messiah="Jesus">
+              <span class="tradition-badge">Most common</span>
               <span class="preset-icon">◈</span>
               <span class="preset-name">Traditional</span>
               <span class="preset-sub">Christian</span>
@@ -481,7 +484,35 @@
 
     <!-- ─── ABOUT MODAL ─── -->
     <div class="about-modal" id="aboutModal">
-      ...
+      <div class="about-modal-content">
+        <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+        <div class="about-section">
+          <div class="about-title">Palal</div>
+          <div class="about-subtitle">Prayer Intelligence</div>
+        </div>
+        <div class="about-section">
+          <p>Palal — from the Hebrew פלל, "to intervene, to intercede" — is a space for prayer that takes both stillness and the world seriously.</p>
+          <p>Every prayer here is real. Every number you see reflects something that actually happened, not a simulated count.</p>
+        </div>
+        <div class="about-section about-gospel">
+          <div class="about-gospel-title">Why it exists</div>
+          <p>To hold two things at once: quiet, unhurried time with <span class="about-messiah-name-dynamic">Yeshua</span>, and honest awareness of a world that needs intercession.</p>
+        </div>
+        <div class="about-section">
+          <div class="about-values">
+            <span class="value-tag">Stillness</span>
+            <span class="value-tag">Honesty</span>
+            <span class="value-tag">Intercession</span>
+            <span class="value-tag">Scripture</span>
+          </div>
+        </div>
+        <div class="about-section">
+          <div class="about-verse">"The prayer of a righteous person is powerful and effective."</div>
+          <div class="about-verse-ref">James 5:16</div>
+        </div>
+        <div class="about-credit">Built with care, one prayer at a time.</div>
+        <div class="about-version">Palal v2</div>
+      </div>
     </div>
 
     <!-- ─── TAW PANEL ─── -->
