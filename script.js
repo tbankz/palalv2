@@ -128,11 +128,29 @@ document.addEventListener('keydown', function(e) {
   const circlesPanel = document.getElementById('circlesPanel');
   if (circlesPanel && circlesPanel.classList.contains('open')) { document.getElementById('closeCircles')?.click(); return; }
 
+  const planPanel = document.getElementById('planPanel');
+  if (planPanel && planPanel.classList.contains('open')) { document.getElementById('closePlan')?.click(); return; }
+
   const tawPanel = document.getElementById('tawPanel');
   if (tawPanel && tawPanel.classList.contains('open')) { document.getElementById('closeTaw')?.click(); return; }
 
   if (isSanctuaryActive) { leaveSanctuary(); return; }
 });
+
+// ─── PANEL-STACKING SAFETY NET ────────────────────
+// Not yet wired into any handler — deliberate follow-up, see conversation.
+function closeAllPanelsExcept(exceptId) {
+  const panelIds = ['dnaPanel', 'requestsPanel', 'guidedPanel', 'circlesPanel', 'tawPanel', 'planPanel', 'dnaDetailModal', 'settingsPanel', 'countryModal', 'aboutModal'];
+  panelIds.forEach(id => {
+    if (id === exceptId) return;
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove('open', 'show');
+      if (id === 'tawPanel') { el.style.display = 'none'; el.style.pointerEvents = 'none'; }
+    }
+  });
+}
+window.closeAllPanelsExcept = closeAllPanelsExcept;
 
 // ─── STORE ──────────────────────────────────────
 const STORE = 'palal_v32';
@@ -154,6 +172,9 @@ const DEFAULT_STATE = {
   lastKnownCoords: null,
   sanctuarySessions: [],
   archetypeGender: 'male',
+  planItems: [],
+  tawHighScores: {},
+  tawGameHistory: [],
   messiahName: 'Jesus',
   godName: 'LORD',
   _guidedActive: false,
@@ -171,6 +192,9 @@ function loadLocal() {
     if (!Array.isArray(merged.entries)) merged.entries = [];
     if (!Array.isArray(merged.confessions)) merged.confessions = [];
     if (!Array.isArray(merged.requests)) merged.requests = [];
+    if (!Array.isArray(merged.planItems)) merged.planItems = [];
+    if (!Array.isArray(merged.tawGameHistory)) merged.tawGameHistory = [];
+    if (!merged.tawHighScores || typeof merged.tawHighScores !== 'object') merged.tawHighScores = {};
     return merged;
   } catch (e) {
     console.warn('Palal: stored data was corrupted, resetting to defaults.', e);
@@ -255,6 +279,38 @@ async function getMyCircles() {
     id: row.circles.id, name: row.circles.name, description: row.circles.description,
     memberCount: row.circles.circle_members?.[0]?.count || 0
   }));
+}
+
+async function getRecentCircleActivity() {
+  if (!supabaseClient) return [];
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) return [];
+  const myCircles = await getMyCircles();
+  if (!myCircles.length) return [];
+  const circleIds = myCircles.map(c => c.id);
+  const { data, error } = await supabaseClient
+    .from('circle_prayers')
+    .select('id, text, answered, created_at, circle_id, circles(name)')
+    .in('circle_id', circleIds)
+    .order('created_at', { ascending: false })
+    .limit(5);
+  if (error) { console.warn(error); return []; }
+  return data.map(p => ({
+    circleName: p.circles?.name || 'a circle',
+    circleId: p.circle_id,
+    answered: p.answered,
+    time: new Date(p.created_at)
+  }));
+}
+
+function formatRelativeTime(date) {
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
 }
 
 // ─── CIRCLE MODERATION (owner/admin) ─────────────
@@ -533,23 +589,52 @@ async function renderCircles() {
       container.innerHTML = '<div class="dna-empty">Sign in to see your circles.</div>';
       return;
     }
-    const circles = await getMyCircles();
+    const [circles, activity] = await Promise.all([getMyCircles(), getRecentCircleActivity()]);
+
     let html = '';
     if (circles.length === 0) {
-      html = '<div class="dna-empty">You haven\'t joined any circles yet.</div>';
+      html = `${EMPTY_NETWORK_SVG}<div class="dna-empty">You haven't joined any circles yet.</div>`;
     } else {
+      html += '<div class="dashboard-grid">';
       circles.forEach(c => {
         html += `
-          <div class="circle-item" onclick="openCircleRoom('${c.id}')">
-            <div class="info">
-              <div class="name">◈ ${escapeHtml(c.name)}</div>
-              <div class="members">${c.memberCount} members</div>
+          <div class="dashboard-card" data-open-circle="${c.id}">
+            <div class="dashboard-card-icon">◈</div>
+            <div class="dashboard-card-name">${escapeHtml(c.name)}</div>
+            <div class="dashboard-card-stats">
+              <span><span class="num">${c.memberCount}</span> mem</span>
             </div>
+            <button class="circle-silence-btn" data-silence-id="${c.id}" data-silence-name="${escapeHtml(c.name)}">Join in Silence</button>
           </div>
         `;
       });
+      html += '</div>';
     }
+
+    html += `
+      <div class="dashboard-activity">
+        <div class="dashboard-activity-title">● Recent Activity</div>
+        ${activity.length === 0
+          ? '<div class="dna-empty" style="padding:0.75rem 0;">No recent activity yet.</div>'
+          : activity.map(a => `
+            <div class="dashboard-activity-item" data-open-circle="${a.circleId}">
+              <span class="dashboard-activity-text">${a.answered ? '✧ A prayer was answered in ' : 'A prayer was shared in '}<span class="highlight">${escapeHtml(a.circleName)}</span></span>
+              <span class="dashboard-activity-time">${formatRelativeTime(a.time)}</span>
+            </div>
+          `).join('')}
+      </div>
+    `;
+
     container.innerHTML = html;
+    container.querySelectorAll('[data-open-circle]').forEach(el => {
+      el.addEventListener('click', () => openCircleRoom(el.dataset.openCircle));
+    });
+    container.querySelectorAll('[data-silence-id]').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        enterCircleSilence(this.dataset.silenceId, this.dataset.silenceName);
+      });
+    });
   }
 }
 
@@ -612,7 +697,49 @@ if (joinCodeBtn) {
 }
 
 // ─── CIRCLE ROOM (shared prayer feed) ─────────────
+const SHARED_SESSION_VERSES = [
+  'Matthew 18:20', 'Psalm 133:1', 'Acts 2:42', 'Ephesians 4:3',
+  'Colossians 3:14', '1 Thessalonians 5:11', 'Romans 12:5', 'Hebrews 10:24-25'
+];
+
+async function fetchSessionVerse(ref) {
+  const cacheKey = 'palal_session_verse_' + ref;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+  try {
+    const res = await fetch('https://bible-api.com/' + encodeURIComponent(ref) + '?translation=kjv');
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    const text = (data.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) throw new Error('empty verse');
+    const result = { verse: text, ref: data.reference || ref };
+    try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch (e) {}
+    return result;
+  } catch (e) {
+    return { verse: null, ref: ref };
+  }
+}
+
 let circleRoomChannel = null;
+let circlePresenceState = {};
+let sharedSessionIndex = 0;
+let sharedSessionActive = false;
+
+function renderPresenceStrip() {
+  const el = document.getElementById('circlePresenceStrip');
+  if (!el) return;
+  const people = Object.values(circlePresenceState);
+  if (!people.length) { el.innerHTML = ''; return; }
+  el.innerHTML = people.map(p => `
+    <div class="presence-pill">
+      <span class="presence-dot ${p.status}"></span>
+      <span>${escapeHtml(p.name)}</span>
+    </div>
+  `).join('');
+}
+
 function teardownCircleRoomChannel() {
   stopDailyCountdown();
   if (circleRoomChannel && supabaseClient) {
@@ -676,6 +803,100 @@ async function renderCircleMembers(circleId) {
 }
 window.renderCircleMembers = renderCircleMembers;
 
+// ─── CIRCLE SILENCE (shared Sanctuary session) ────
+let activeCircleSession = null; // { circleId, circleName, channel }
+
+async function enterCircleSilence(circleId, circleName) {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) { toast('Sign in to pray together'); return; }
+
+  document.getElementById('circlesPanel')?.classList.remove('open');
+  document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('navWorld')?.classList.add('active');
+
+  sharedSessionIndex = 0;
+
+  const myName = (user.user_metadata && user.user_metadata.full_name) || user.email || 'Someone';
+  const channel = supabaseClient.channel('circle_silence_' + circleId);
+  channel
+    .on('broadcast', { event: 'verse_nav' }, ({ payload }) => {
+      sharedSessionIndex = payload.index;
+      renderCircleSanctuaryVerse();
+    })
+    .on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      circlePresenceState = {};
+      Object.values(state).forEach(presences => {
+        presences.forEach(p => { circlePresenceState[p.user_id] = { name: p.name }; });
+      });
+      renderSanctuaryPresenceRow();
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') await channel.track({ user_id: user.id, name: myName });
+    });
+
+  activeCircleSession = { circleId, circleName, channel };
+
+  enterSanctuary('contemplation');
+  const sanctuary = $('sanctuary');
+  if (sanctuary) sanctuary.classList.add('circle-session');
+  renderCircleSanctuaryVerse();
+}
+window.enterCircleSilence = enterCircleSilence;
+
+function renderCircleSanctuaryVerse() {
+  const ref = SHARED_SESSION_VERSES[sharedSessionIndex];
+  const solRef = $('solRef');
+  const modeSelector = document.getElementById('sanctuaryModeSelector');
+  if (modeSelector) modeSelector.style.display = 'none';
+  const label = document.getElementById('circleSessionLabel');
+  if (label) label.textContent = '✦ Praying Together · ' + activeCircleSession.circleName;
+
+  fetchSessionVerse(ref).then(result => {
+    const solVerse = $('solVerse');
+    const displayVerse = result.verse ? replaceGodName(replaceMessiahName(result.verse)) : null;
+    const displayRef = replaceGodName(replaceMessiahName(result.ref));
+    if (solVerse) solVerse.textContent = displayVerse ? '"' + displayVerse + '"' : '—';
+    if (solRef) solRef.textContent = displayRef;
+  });
+
+  const prevBtn = document.getElementById('circleSessionPrev');
+  const nextBtn = document.getElementById('circleSessionNext');
+  const countEl = document.getElementById('circleSessionCount');
+  if (prevBtn) prevBtn.disabled = sharedSessionIndex === 0;
+  if (nextBtn) nextBtn.disabled = sharedSessionIndex >= SHARED_SESSION_VERSES.length - 1;
+  if (countEl) countEl.textContent = (sharedSessionIndex + 1) + ' / ' + SHARED_SESSION_VERSES.length;
+}
+
+function navigateCircleSession(delta) {
+  if (!activeCircleSession) return;
+  sharedSessionIndex = Math.max(0, Math.min(SHARED_SESSION_VERSES.length - 1, sharedSessionIndex + delta));
+  renderCircleSanctuaryVerse();
+  activeCircleSession.channel.send({ type: 'broadcast', event: 'verse_nav', payload: { index: sharedSessionIndex } });
+}
+window.navigateCircleSession = navigateCircleSession;
+
+function renderSanctuaryPresenceRow() {
+  const row = document.getElementById('circlePresenceRow');
+  if (!row) return;
+  const people = Object.values(circlePresenceState);
+  row.innerHTML = people.map(p => {
+    const initials = p.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+    return `<div class="sanctuary-presence-avatar" title="${escapeHtml(p.name)}"><span>${initials}</span><span class="sanctuary-presence-dot"></span></div>`;
+  }).join('');
+}
+
+function leaveCircleSession() {
+  if (!activeCircleSession) return;
+  supabaseClient.removeChannel(activeCircleSession.channel);
+  activeCircleSession = null;
+  circlePresenceState = {};
+  const sanctuary = $('sanctuary');
+  if (sanctuary) sanctuary.classList.remove('circle-session');
+  const modeSelector = document.getElementById('sanctuaryModeSelector');
+  if (modeSelector) modeSelector.style.display = '';
+}
+
 async function openCircleRoom(circleId) {
   teardownCircleRoomChannel();
   const { data: circle } = await supabaseClient.from('circles').select('*').eq('id', circleId).single();
@@ -724,6 +945,7 @@ async function openCircleRoom(circleId) {
       <div class="daily-challenge-text" style="margin-bottom:0.5rem;">${escapeHtml(getTodaysChallengeMeta().reflection)}</div>
       <button class="daily-challenge-share-btn" id="circleRoomDailyShareBtn" style="margin-bottom:0.75rem;">Share Today's Challenge</button>
     ` : ''}
+    <div class="presence-strip" id="circlePresenceStrip"></div>
     <div class="circle-room-feed">
   `;
   if (prayers.length === 0) {
@@ -854,11 +1076,28 @@ async function openCircleRoom(circleId) {
     });
   });
 
+  circlePresenceState = {};
+  sharedSessionIndex = 0;
+  sharedSessionActive = false;
+
   if (supabaseClient) {
+    const myName = (user?.user_metadata && user.user_metadata.full_name) || user?.email || 'Someone';
     circleRoomChannel = supabaseClient
       .channel('circle_room_' + circleId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'circle_prayers', filter: 'circle_id=eq.' + circleId }, () => openCircleRoom(circleId))
-      .subscribe();
+      .on('presence', { event: 'sync' }, () => {
+        const state = circleRoomChannel.presenceState();
+        circlePresenceState = {};
+        Object.values(state).forEach(presences => {
+          presences.forEach(p => { circlePresenceState[p.user_id] = { name: p.name, status: p.status }; });
+        });
+        renderPresenceStrip();
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && user) {
+          await circleRoomChannel.track({ user_id: user.id, name: myName, status: 'idle' });
+        }
+      });
   }
 }
 window.openCircleRoom = openCircleRoom;
@@ -926,6 +1165,97 @@ if (closeCircles) {
   });
 }
 
+const navPlan = $('navPlan');
+if (navPlan) {
+  navPlan.addEventListener('click', function() {
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    if (isSanctuaryActive) leaveSanctuary();
+    ['dnaPanel', 'requestsPanel', 'guidedPanel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('open');
+    });
+    const circlesPanel = document.getElementById('circlesPanel');
+    if (circlesPanel) circlesPanel.classList.remove('open');
+    renderPlan();
+    const panel = document.getElementById('planPanel');
+    if (panel) panel.classList.toggle('open');
+  });
+}
+const closePlan = document.getElementById('closePlan');
+if (closePlan) {
+  closePlan.addEventListener('click', function() {
+    document.getElementById('planPanel')?.classList.remove('open');
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('navWorld')?.classList.add('active');
+  });
+}
+
+const navGuided = $('navGuided');
+if (navGuided) {
+  navGuided.addEventListener('click', function() {
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    if (isSanctuaryActive) leaveSanctuary();
+    const dnaPanel = $('dnaPanel');
+    const requestsPanel = $('requestsPanel');
+    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
+    if (requestsPanel && requestsPanel.classList.contains('open')) requestsPanel.classList.remove('open');
+    openGuidedPanel();
+  });
+}
+
+const navRequests = $('navRequests');
+if (navRequests) {
+  navRequests.addEventListener('click', function() {
+    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    if (isSanctuaryActive) leaveSanctuary();
+    const dnaPanel = $('dnaPanel');
+    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
+    renderRequests();
+    const requestsPanel = $('requestsPanel');
+    if (requestsPanel) requestsPanel.classList.toggle('open');
+  });
+}
+
+const navTaw = document.getElementById('navTaw');
+if (navTaw) {
+  navTaw.addEventListener('click', async function() {
+    if (isSanctuaryActive) leaveSanctuary();
+    const dnaPanel = document.getElementById('dnaPanel');
+    const requestsPanel = document.getElementById('requestsPanel');
+    const guidedPanel = document.getElementById('guidedPanel');
+    const tawPanel = document.getElementById('tawPanel');
+    if (dnaPanel) dnaPanel.classList.remove('open');
+    if (requestsPanel) requestsPanel.classList.remove('open');
+    if (guidedPanel) guidedPanel.classList.remove('open');
+    if (tawPanel) {
+      const isOpen = tawPanel.classList.contains('open');
+      if (isOpen) {
+        tawPanel.classList.remove('open');
+        tawPanel.style.display = 'none';
+        tawPanel.style.pointerEvents = 'none';
+      } else {
+        tawPanel.style.display = 'block';
+        tawPanel.style.pointerEvents = 'auto';
+        tawPanel.classList.add('open');
+        const tawWordEl = document.getElementById('tawWord');
+        if (tawWordEl) tawWordEl.textContent = 'Loading…';
+        window.TAW_NAMES = await window.getTawNames();
+        window.rebuildTawIndexes();
+        window.tawTeardown();
+        window.tawInitMode('chain');
+        window.syncTawUI();
+        const tawInput = document.getElementById('tawInput');
+        if (tawInput) setTimeout(() => tawInput.focus(), 300);
+      }
+      document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+    }
+  });
+}
+
 function saveLocal() {
   try {
     localStorage.setItem(STORE, JSON.stringify(D));
@@ -936,6 +1266,170 @@ function saveLocal() {
     return false;
   }
 }
+
+// ─── PRAYER PLAN (prospective, ongoing — separate from DNA) ──
+function getTodayDateString() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function isPlanItemPrayedToday(item) {
+  return item.lastPrayedDate === getTodayDateString();
+}
+
+function addPlanItem(text, category, term) {
+  if (!text.trim()) { toast('Write a prayer'); return; }
+  D.planItems.unshift({
+    id: Date.now(),
+    text: text.trim(),
+    category: category,
+    term: term,
+    lastPrayedDate: null,
+    alwaysOn: false,
+    answered: false,
+    createdAt: new Date().toISOString()
+  });
+  saveLocal();
+  toast('✦ Added to prayer plan');
+}
+
+function togglePlanItemPrayedToday(id) {
+  const item = D.planItems.find(i => i.id === id);
+  if (!item) return;
+  item.lastPrayedDate = isPlanItemPrayedToday(item) ? null : getTodayDateString();
+  saveLocal();
+  renderPlan();
+  toast(isPlanItemPrayedToday(item) ? '◈ Prayed today' : '◯ Marked pending');
+}
+
+function togglePlanItemAlwaysOn(id) {
+  const item = D.planItems.find(i => i.id === id);
+  if (!item) return;
+  const turningOn = !item.alwaysOn;
+  if (turningOn) D.planItems.forEach(i => { i.alwaysOn = false; });
+  item.alwaysOn = turningOn;
+  saveLocal();
+  renderPlan();
+  toast(turningOn ? '✦ Always-on prayer set' : '◯ Always-on cleared');
+}
+
+function markPlanItemAnswered(id) {
+  const item = D.planItems.find(i => i.id === id);
+  if (!item) return;
+  item.answered = true;
+  saveLocal();
+  renderPlan();
+  toast('✦ Marked answered — God is faithful');
+}
+
+function deletePlanItem(id) {
+  const idx = D.planItems.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  D.planItems.splice(idx, 1);
+  saveLocal();
+  renderPlan();
+  toast('Removed from plan');
+}
+window.togglePlanItemPrayedToday = togglePlanItemPrayedToday;
+window.togglePlanItemAlwaysOn = togglePlanItemAlwaysOn;
+window.markPlanItemAnswered = markPlanItemAnswered;
+window.deletePlanItem = deletePlanItem;
+
+let currentPlanCategory = 'all';
+
+function renderPlan() {
+  const container = document.getElementById('planContent');
+  if (!container) return;
+
+  const alwaysOnItem = D.planItems.find(i => i.alwaysOn && !i.answered);
+  const filtered = currentPlanCategory === 'all'
+    ? D.planItems
+    : D.planItems.filter(i => i.category === currentPlanCategory);
+
+  const terms = [
+    { id: 'short', label: 'Short-Term' },
+    { id: 'mid', label: 'Mid-Term' },
+    { id: 'long', label: 'Long-Term' }
+  ];
+
+  let html = '';
+
+  if (alwaysOnItem) {
+    html += `
+      <div class="plan-alwayson-banner">
+        <span class="plan-alwayson-label">✦ Always On</span>
+        <span class="plan-alwayson-text">${escapeHtml(alwaysOnItem.text)}</span>
+      </div>
+    `;
+  }
+
+  html += `
+    <div class="plan-add-row">
+      <input type="text" id="planInput" placeholder="What are you praying into?" maxlength="140" autocomplete="off">
+      <div class="plan-add-selects">
+        <select id="planCategorySelect">
+          <option value="personal">Personal</option>
+          <option value="family">Family</option>
+          <option value="finances">Finances</option>
+          <option value="ministry">Ministry</option>
+        </select>
+        <select id="planTermSelect">
+          <option value="short">Short-Term</option>
+          <option value="mid">Mid-Term</option>
+          <option value="long">Long-Term</option>
+        </select>
+      </div>
+      <button id="planAddBtn">Add to Plan</button>
+    </div>
+  `;
+
+  terms.forEach(term => {
+    const items = filtered.filter(i => i.term === term.id && !i.answered);
+    html += `<div class="plan-section"><div class="plan-section-header">${term.label} <span class="plan-section-count">${items.length}</span></div>`;
+    if (items.length === 0) {
+      html += `<div class="plan-empty">No prayers here yet</div>`;
+    } else {
+      items.forEach(item => {
+        const prayedToday = isPlanItemPrayedToday(item);
+        html += `
+          <div class="plan-item">
+            <button class="plan-check ${prayedToday ? 'checked' : ''}" onclick="togglePlanItemPrayedToday(${item.id})" aria-label="Mark prayed today"></button>
+            <div class="plan-item-text">${escapeHtml(item.text)}</div>
+            <div class="plan-item-actions">
+              <button class="plan-always-btn ${item.alwaysOn ? 'active' : ''}" onclick="togglePlanItemAlwaysOn(${item.id})">Always</button>
+              <button class="plan-answered-btn" onclick="markPlanItemAnswered(${item.id})">Answered</button>
+              <button class="plan-delete-btn" onclick="deletePlanItem(${item.id})">✕</button>
+            </div>
+          </div>
+        `;
+      });
+    }
+    html += `</div>`;
+  });
+
+  container.innerHTML = html;
+
+  const addBtn = document.getElementById('planAddBtn');
+  if (addBtn) {
+    addBtn.addEventListener('click', function() {
+      const input = document.getElementById('planInput');
+      const category = document.getElementById('planCategorySelect').value;
+      const term = document.getElementById('planTermSelect').value;
+      addPlanItem(input.value, category, term);
+      renderPlan();
+    });
+  }
+}
+window.renderPlan = renderPlan;
+
+document.addEventListener('click', function(e) {
+  const chip = e.target.closest('[data-plan-category]');
+  if (chip) {
+    document.querySelectorAll('[data-plan-category]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentPlanCategory = chip.dataset.planCategory;
+    renderPlan();
+  }
+});
 
 // ─── THEME ──────────────────────────────────────
 function applyTheme(th) {
@@ -1776,6 +2270,9 @@ function renderDNA() {
   renderModeBreakdown();
   renderConstellation();
   renderCompanionCard();
+  renderVitalSigns();
+  renderInsights();
+  renderRhythmHeatmap();
 
   if (total === 0) {
     listEl.innerHTML = `${EMPTY_NETWORK_SVG}<div class="dna-empty">Start praying to see your DNA.</div>`;
@@ -1866,6 +2363,153 @@ function renderModeBreakdown() {
   html += '</div>';
   container.innerHTML = html;
 }
+
+// ─── VITAL SIGNS ──────────────────────────────────
+function getVitalSigns() {
+  const entries = D.entries || [];
+  const total = entries.length;
+
+  // Consistency: distinct days prayed this month / days elapsed this month
+  const now = new Date();
+  const thisMonthEntries = entries.filter(e => {
+    if (!e.timestamp) return false;
+    const d = new Date(e.timestamp);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  });
+  const distinctDays = new Set(thisMonthEntries.map(e => e.timestamp.split('T')[0])).size;
+  const daysElapsed = now.getDate();
+  const consistency = daysElapsed > 0 ? Math.round((distinctDays / daysElapsed) * 100) : 0;
+
+  // Depth: % of prayers accompanied by a real 60+ second Sanctuary session (reuses Stars of Abraham's real star count)
+  const starCount = getStarCount();
+  const depth = total > 0 ? Math.min(100, Math.round((starCount / total) * 100)) : 0;
+
+  // Balance: distinct modes used out of the 8 available
+  const distinctModes = new Set(entries.map(e => e.mode)).size;
+  const balance = Math.round((distinctModes / 8) * 100);
+
+  // Answered
+  const answeredCount = entries.filter(e => e.answered).length;
+  const answeredPct = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
+
+  return { consistency, depth, balance, answeredPct, total, distinctModes };
+}
+
+function getVitalStatus(pct) {
+  if (pct < 34) return { label: 'Building', color: 'var(--ember)' };
+  if (pct < 67) return { label: 'Growing', color: 'var(--gold-str)' };
+  return { label: 'Strong', color: 'var(--gold)' };
+}
+
+function renderVitalRow(label, pct, subtitle) {
+  const status = getVitalStatus(pct);
+  return `
+    <div class="vital-row">
+      <div class="vital-header">
+        <span class="vital-label">${label}</span>
+        <span class="vital-value">${pct}%</span>
+        <span class="vital-status" style="color:${status.color};border-color:${status.color};">${status.label}</span>
+      </div>
+      <div class="vital-bar">
+        <div class="vital-fill" style="width:${pct}%;background:${status.color};"></div>
+      </div>
+      <div class="vital-sub">${subtitle}</div>
+    </div>
+  `;
+}
+
+function renderVitalSigns() {
+  const container = document.getElementById('vitalSignsSection');
+  if (!container) return;
+  const v = getVitalSigns();
+  if (v.total === 0) {
+    container.innerHTML = `<div class="dna-section-title">◈ Vital Signs</div><div class="dna-empty">Pray a few times to see your vital signs.</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="dna-section-title">◈ Vital Signs</div>
+    ${renderVitalRow('Consistency', v.consistency, 'Days prayed this month')}
+    ${renderVitalRow('Depth', v.depth, 'Prayers paired with real stillness')}
+    ${renderVitalRow('Balance', v.balance, v.distinctModes + ' of 8 prayer types used')}
+    ${renderVitalRow('Answered', v.answeredPct, 'Answered vs. total prayers')}
+  `;
+}
+window.renderVitalSigns = renderVitalSigns;
+
+// ─── WAYS TO ELEVATE (rule-based, honest — not AI) ─
+function generateInsights() {
+  const v = getVitalSigns();
+  const tips = [];
+  if (v.total < 4) return [{ title: 'Start Your Journey', text: 'Pray a few more times to unlock personalized insights about your prayer life.' }];
+
+  if (v.depth < 25) tips.push({ title: 'Go Deeper', text: `Only ${v.depth}% of your prayers include real stillness. Try holding the crown a little longer next time.` });
+  if (v.balance < 40) {
+    const modeCounts = {};
+    D.entries.forEach(e => { modeCounts[e.mode] = (modeCounts[e.mode] || 0) + 1; });
+    const dominant = Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0];
+    if (dominant) tips.push({ title: 'Broaden Your Range', text: `${capitalize(dominant[0])} makes up most of your prayers. Try one session of pure Adoration this week.` });
+  }
+  if (v.consistency < 40) tips.push({ title: 'Build Rhythm', text: `Your consistency is ${v.consistency}% this month. Try praying at the same hour each day — even briefly.` });
+  if (v.answeredPct < 15 && v.total > 6) tips.push({ title: 'Look Back', text: `Only ${v.answeredPct}% of your prayers are marked answered. A few might be — go back and check.` });
+  if (tips.length === 0) tips.push({ title: 'Keep Going', text: 'Your prayer life is healthy across the board. Consider deepening your Sanctuary time or adding more intercession.' });
+
+  return tips.slice(0, 3);
+}
+
+function renderInsights() {
+  const container = document.getElementById('insightsSection');
+  if (!container) return;
+  const tips = generateInsights();
+  container.innerHTML = `
+    <div class="dna-section-title">✦ Ways to Elevate</div>
+    ${tips.map((t, i) => `
+      <div class="insight-card">
+        <span class="insight-number">${i + 1}</span>
+        <div class="insight-content">
+          <div class="insight-title">${escapeHtml(t.title)}</div>
+          <div class="insight-text">${escapeHtml(t.text)}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+window.renderInsights = renderInsights;
+
+// ─── 24-HOUR PRAYER RHYTHM HEATMAP ────────────────
+function renderRhythmHeatmap() {
+  const container = document.getElementById('rhythmSection');
+  if (!container) return;
+  const entries = D.entries || [];
+  if (entries.length < 3) {
+    container.innerHTML = `<div class="dna-section-title">◈ Your Rhythm</div><div class="dna-empty">Pray a few more times to see your rhythm.</div>`;
+    return;
+  }
+  const hourCounts = new Array(24).fill(0);
+  entries.forEach(e => {
+    if (!e.timestamp) return;
+    const h = new Date(e.timestamp).getHours();
+    hourCounts[h]++;
+  });
+  const maxHour = Math.max(...hourCounts, 1);
+  const peakHourIdx = hourCounts.indexOf(maxHour);
+  const peakLabel = peakHourIdx === 0 ? '12am' : peakHourIdx < 12 ? peakHourIdx + 'am' : peakHourIdx === 12 ? '12pm' : (peakHourIdx - 12) + 'pm';
+
+  let svg = `<svg viewBox="0 0 300 30" preserveAspectRatio="none" style="width:100%;height:36px;">`;
+  for (let h = 0; h < 24; h++) {
+    const intensity = hourCounts[h] / maxHour;
+    const x = (h / 24) * 300;
+    const height = 6 + intensity * 20;
+    svg += `<rect x="${x}" y="${28 - height}" width="${300 / 24 - 1}" height="${height}" fill="var(--gold)" opacity="${0.15 + intensity * 0.7}" rx="0.5"/>`;
+  }
+  svg += `</svg>`;
+
+  container.innerHTML = `
+    <div class="dna-section-title">◈ Your Rhythm</div>
+    <div class="rhythm-heatmap">${svg}</div>
+    <div class="rhythm-insight">Peak hour: ${peakLabel}</div>
+  `;
+}
+window.renderRhythmHeatmap = renderRhythmHeatmap;
 
 // ─── STARS OF ABRAHAM ────────────────────────────
 function getStarCount() {
@@ -3208,6 +3852,7 @@ function enterSanctuary(modeNameOverride) {
 
 function leaveSanctuary() {
   isSanctuaryActive = false;
+  if (activeCircleSession) leaveCircleSession();
   const sanctuary = $('sanctuary');
   if (sanctuary) sanctuary.classList.remove('active');
   clearInterval(sanctuaryInterval);
@@ -3571,25 +4216,7 @@ if (dnaDetailSave) {
   });
 }
 
-const navRequests = $('navRequests');
-if (navRequests) {
-  navRequests.addEventListener('click', function() {
-    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
-    this.classList.add('active');
-    if (isSanctuaryActive) leaveSanctuary();
-    const dnaPanel = $('dnaPanel');
-// ─── ADD THESE 3 LINES ───
-    const tawPanel = document.getElementById('tawPanel');
-    if (tawPanel && tawPanel.classList.contains('open')) {
-      tawPanel.classList.remove('open');
-    }
-    // ─── END ADD ───    
-    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
-    renderRequests();
-    const requestsPanel = $('requestsPanel');
-    if (requestsPanel) requestsPanel.classList.toggle('open');
-  });
-}// ─── CLOSE REQUESTS ──────────────────────────────
+// ─── CLOSE REQUESTS ──────────────────────────────
 const closeRequests = document.getElementById('closeRequests');
 if (closeRequests) {
   closeRequests.addEventListener('click', function() {
@@ -3621,60 +4248,6 @@ if (closeTaw) {
   });
 }
 // ─── END ADD ───
-
-// ─── TAW NAVIGATION ─────────────────────────────
-const navTaw = document.getElementById('navTaw');
-if (navTaw) {
-  navTaw.addEventListener('click', async function() {
-    // Close sanctuary if open
-    if (isSanctuaryActive) leaveSanctuary();
-    
-    // Close other panels
-    const dnaPanel = document.getElementById('dnaPanel');
-    const requestsPanel = document.getElementById('requestsPanel');
-    const guidedPanel = document.getElementById('guidedPanel');
-    const tawPanel = document.getElementById('tawPanel');
-    
-    if (dnaPanel) dnaPanel.classList.remove('open');
-    if (requestsPanel) requestsPanel.classList.remove('open');
-    if (guidedPanel) guidedPanel.classList.remove('open');
-    
-    // Toggle TAW
-    if (tawPanel) {
-      const isOpen = tawPanel.classList.contains('open');
-      
-      if (isOpen) {
-        // Close TAW
-        tawPanel.classList.remove('open');
-        tawPanel.style.display = 'none';
-        tawPanel.style.pointerEvents = 'none';
-      } else {
-        // Open TAW
-        tawPanel.style.display = 'block';
-        tawPanel.style.pointerEvents = 'auto';
-        tawPanel.classList.add('open');
-        
-        // Initialize the game - CRITICAL FIX
-        const tawWordEl = document.getElementById('tawWord');
-        if (tawWordEl) tawWordEl.textContent = 'Loading…';
-        window.TAW_NAMES = await window.getTawNames();
-        window.rebuildTawIndexes();
-        window.tawTeardown();
-        window.tawInitMode('chain');
-        window.syncTawUI();
-        // Focus the input
-        const tawInput = document.getElementById('tawInput');
-        if (tawInput) {
-          setTimeout(() => tawInput.focus(), 300);
-        }
-      }
-      
-      // Update dock
-      document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
-      this.classList.add('active');
-    }
-  });
-}
 
 // ─── SCRIPTURE BLOCK TAP ────────────────────────
 const scriptureBlock = $('scriptureBlock');
@@ -4583,23 +5156,6 @@ function closeGuidedPanel() {
   if (navWorld2) navWorld2.classList.add('active');
 }
 
-// ─── DOCK NAVIGATION - GUIDED ──────────────────
-const navGuided = $('navGuided');
-if (navGuided) {
-  navGuided.addEventListener('click', function() {
-    document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
-    this.classList.add('active');
-    if (isSanctuaryActive) leaveSanctuary();
-    
-    const dnaPanel = $('dnaPanel');
-    const requestsPanel = $('requestsPanel');
-    if (dnaPanel && dnaPanel.classList.contains('open')) dnaPanel.classList.remove('open');
-    if (requestsPanel && requestsPanel.classList.contains('open')) requestsPanel.classList.remove('open');
-    
-    openGuidedPanel();
-  });
-}
-
 // ─── CLOSE GUIDED BUTTON ────────────────────────
 const closeGuidedBtn = $('closeGuided');
 if (closeGuidedBtn) {
@@ -4828,11 +5384,21 @@ const TAW_BACKUP_NAMES = {
   "timothy":["1 Timothy"], "james":["James"], "jude":["Jude"]
 };
 
+const TAW_SUPPLEMENT_NAMES = {
+  "mark": ["Mark", "Acts", "Colossians", "2 Timothy", "Philemon"],
+  "silas": ["Acts", "1 Peter"],
+  "titus": ["2 Corinthians", "Galatians", "2 Timothy", "Titus"],
+  "onesimus": ["Colossians", "Philemon"]
+};
+
 async function loadBibleNames() {
   const response = await fetch('taw-names.json');
   if (!response.ok) throw new Error('Failed to load taw-names.json: ' + response.status);
   const data = await response.json();
   if (!data || Object.keys(data).length < 20) throw new Error('taw-names.json returned too few names');
+  Object.entries(TAW_SUPPLEMENT_NAMES).forEach(([name, books]) => {
+    if (!data[name]) data[name] = books;
+  });
   return data;
 }
 
@@ -4867,6 +5433,30 @@ window.getTawNames = getTawNames;
 
   const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+  function tawLevenshtein(a, b) {
+    const tmp = [];
+    for (let i = 0; i <= b.length; i++) tmp[i] = [i];
+    for (let j = 0; j <= a.length; j++) tmp[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        tmp[i][j] = b[i-1] === a[j-1] ? tmp[i-1][j-1] : Math.min(tmp[i-1][j-1]+1, tmp[i][j-1]+1, tmp[i-1][j]+1);
+      }
+    }
+    return tmp[b.length][a.length];
+  }
+
+  function tawFindClosestMatch(input, keysArray) {
+    if (!keysArray || !keysArray.length) return null;
+    let closest = null, minDist = 3;
+    for (let i = 0; i < keysArray.length; i++) {
+      const d = tawLevenshtein(input, keysArray[i]);
+      if (d < minDist) { minDist = d; closest = keysArray[i]; }
+    }
+    return closest;
+  }
+
+  let tawPendingSuggestion = null;
+
   // ─── TAW NAME DATABASE ──────────────────────────
   // Populated at runtime via getTawNames() (API with local backup)
   let TAW_NAMES = {};
@@ -4879,7 +5469,11 @@ window.getTawNames = getTawNames;
     ALPHABET.forEach(l => tawNameIndexByLetter[l.toLowerCase()] = []);
     TAW_BOOKS.forEach(b => tawNameIndexByBook[b] = []);
 
-    for (const [name, books] of Object.entries(TAW_NAMES)) {
+    // window.TAW_NAMES is set by the caller before this runs; the module-scoped TAW_NAMES
+    // variable isn't synced to it until tawInitMode() runs (later in the same handler), so
+    // read from window.TAW_NAMES here to avoid indexing against stale/empty data.
+    const names = (typeof window !== 'undefined' && window.TAW_NAMES) || TAW_NAMES;
+    for (const [name, books] of Object.entries(names)) {
       const firstLetter = name.charAt(0).toLowerCase();
       if (tawNameIndexByLetter[firstLetter]) tawNameIndexByLetter[firstLetter].push(name);
       books.forEach(book => {
@@ -4972,7 +5566,7 @@ function syncTawUI() {
     reqChar = getTawChainLetter(tawCurrentName, tawDeadEndLetter);
     if (reqChar && tawNameIndexByLetter[reqChar]) {
       const rem = tawNameIndexByLetter[reqChar].filter(n => !tawUsedNames.has(n)).length || 0;
-      countText = `${rem} remaining`;
+      countText = rem === 1 ? '1 name left starting with this letter' : `${rem} names left starting with this letter`;
     } else {
       countText = 'No names available';
     }
@@ -4980,19 +5574,19 @@ function syncTawUI() {
     reqChar = tawStormLetter || '?';
     if (tawNameIndexByLetter[reqChar]) {
       const rem = tawNameIndexByLetter[reqChar].filter(n => !tawUsedNames.has(n)).length || 0;
-      countText = `${rem} remaining`;
+      countText = rem === 1 ? '1 name answers the call' : `${rem} names answer the call`;
     } else {
       countText = 'No names available';
     }
   } else if (tawCurrentMode === TAW_MODES.COLLECTOR) {
     reqChar = '◆';
-    countText = TAW_BOOKS[tawCollectorIndex] || 'Complete';
+    countText = `Name someone from ${TAW_BOOKS[tawCollectorIndex] || 'Complete'}`;
   } else if (tawCurrentMode === TAW_MODES.ALPHABET) {
     reqChar = ALPHABET[tawAlphabetIndex] || '✓';
-    countText = tawAlphabetIndex >= ALPHABET.length ? 'Complete' : `${26 - tawAlphabetIndex} left`;
+    countText = tawAlphabetIndex >= ALPHABET.length ? 'Complete' : 'Climb the alphabet, one letter at a time';
   } else if (tawCurrentMode === TAW_MODES.TIMEATTACK) {
     reqChar = '◈';
-    countText = `${tawTimer}s`;
+    countText = `${tawTimer}s remaining — any valid name counts`;
   }
   
   tawReqLetter.textContent = typeof reqChar === 'string' ? reqChar.toUpperCase() : reqChar;
@@ -5011,6 +5605,33 @@ function syncTawUI() {
   tawModeChips.forEach(chip => {
     chip.classList.toggle('active', chip.dataset.tawMode === tawCurrentMode);
   });
+
+  tawRenderBookGrid();
+  tawRenderNamesLog();
+}
+
+function tawRenderBookGrid() {
+  const grid = document.getElementById('tawBookGrid');
+  const countEl = document.getElementById('tawBookGridCount');
+  if (!grid) return;
+  grid.innerHTML = TAW_BOOKS.map((b, idx) => {
+    const cls = tawCompletedBooks.has(b) ? 'taw-book-tile completed' : 'taw-book-tile';
+    return `<span class="${cls}">${b}</span>`;
+  }).join('');
+  if (countEl) countEl.textContent = `${tawCompletedBooks.size}/66`;
+}
+
+function tawRenderNamesLog() {
+  const countEl = document.getElementById('tawUsedCount');
+  const compactEl = document.getElementById('tawUsedCompact');
+  if (countEl) countEl.textContent = tawUsedNameList.length;
+  if (!compactEl) return;
+  if (!tawUsedNameList.length) {
+    compactEl.innerHTML = '<span class="taw-used-empty">No names spoken yet.</span>';
+    return;
+  }
+  const recent = tawUsedNameList.slice(-6);
+  compactEl.innerHTML = recent.map(n => `<span class="taw-chain-name">${n}</span>`).join('<span class="taw-chain-arrow">→</span>');
 }
 
 function tawToast(message) {
@@ -5042,10 +5663,52 @@ function tawToast(message) {
     tawGoPoints.textContent = tawPoints;
     tawGoNames.textContent = tawUsedNameList.length;
     tawGoBooks.textContent = `${tawCompletedBooks.size}/66`;
-    tawGoStreak.textContent = tawStreak;
+
+    if (!D.tawHighScores) D.tawHighScores = {};
+    if (!D.tawGameHistory) D.tawGameHistory = [];
+    const prevBest = D.tawHighScores[tawCurrentMode] || 0;
+    const isNewBest = tawPoints > prevBest;
+    if (isNewBest) D.tawHighScores[tawCurrentMode] = tawPoints;
+
+    D.tawGameHistory.unshift({
+      mode: tawCurrentMode,
+      points: tawPoints,
+      names: tawUsedNameList.length,
+      books: tawCompletedBooks.size,
+      streak: tawStreak,
+      date: new Date().toISOString()
+    });
+    if (D.tawGameHistory.length > 20) D.tawGameHistory = D.tawGameHistory.slice(0, 20);
+    saveLocal();
+
+    const bestEl = document.getElementById('tawGoBest');
+    if (bestEl) bestEl.textContent = D.tawHighScores[tawCurrentMode] || 0;
+    const newBestBadge = document.getElementById('tawGoNewBest');
+    if (newBestBadge) newBestBadge.style.display = isNewBest ? 'inline' : 'none';
+
+    renderTawHistory();
+
     tawGameOver.classList.add('visible');
     syncTawUI();
   }
+
+  function renderTawHistory() {
+    const list = document.getElementById('tawHistoryList');
+    if (!list) return;
+    const history = D.tawGameHistory || [];
+    if (!history.length) {
+      list.innerHTML = '<div class="taw-history-empty">No previous games yet</div>';
+      return;
+    }
+    list.innerHTML = history.slice(0, 5).map(h => `
+      <div class="taw-history-row">
+        <span class="taw-history-mode">${h.mode}</span>
+        <span class="taw-history-points">${h.points} pts</span>
+        <span class="taw-history-date">${new Date(h.date).toLocaleDateString()}</span>
+      </div>
+    `).join('');
+  }
+  window.renderTawHistory = renderTawHistory;
 
   function tawTeardown() {
     tawGameActive = false;
@@ -5196,12 +5859,30 @@ function tawToast(message) {
     tawInput.value = '';
     if (!raw) return;
 
+    if (tawPendingSuggestion && raw === 'yes') {
+      const corrected = tawPendingSuggestion;
+      tawPendingSuggestion = null;
+      tawInput.value = '';
+      tawSubmitCorrectedName(corrected);
+      return;
+    }
+    tawPendingSuggestion = null;
+
     // Check if name exists
     if (!TAW_NAMES[raw]) {
-      tawToast('Name not found');
-      tawInput.classList.add('invalid');
-      setTimeout(() => tawInput.classList.remove('invalid'), 400);
-      tawAddStrike();
+      let pool;
+      if (tawCurrentMode === TAW_MODES.CHAIN) pool = tawNameIndexByLetter[getTawChainLetter(tawCurrentName, tawDeadEndLetter)];
+      else pool = Object.keys(TAW_NAMES);
+      const suggestion = tawFindClosestMatch(raw, pool || Object.keys(TAW_NAMES));
+      if (suggestion) {
+        tawPendingSuggestion = suggestion;
+        tawShowSuggestionToast(suggestion);
+      } else {
+        tawToast('Name not found');
+        tawInput.classList.add('invalid');
+        setTimeout(() => tawInput.classList.remove('invalid'), 400);
+        tawAddStrike();
+      }
       return;
     }
 
@@ -5237,6 +5918,29 @@ function tawToast(message) {
 
     tawCommitEntry(raw);
     tawToast(raw.toUpperCase());
+  }
+
+  function tawShowSuggestionToast(name) {
+    const el = document.getElementById('tawSuggestion');
+    if (!el) { tawToast('Did you mean ' + name.toUpperCase() + '?'); return; }
+    el.innerHTML = `Did you mean <strong>${name.toUpperCase()}</strong>? Type "yes" or tap to submit.`;
+    el.classList.add('show');
+    el.onclick = () => { tawSubmitCorrectedName(name); };
+  }
+
+  function tawSubmitCorrectedName(name) {
+    const el = document.getElementById('tawSuggestion');
+    if (el) el.classList.remove('show');
+    if (tawUsedNames.has(name)) { tawToast('Already used'); tawAddStrike(); return; }
+    let pass = false;
+    if (tawCurrentMode === TAW_MODES.CHAIN) pass = name.charAt(0) === getTawChainLetter(tawCurrentName, tawDeadEndLetter);
+    else if (tawCurrentMode === TAW_MODES.STORM) pass = name.charAt(0) === tawStormLetter;
+    else if (tawCurrentMode === TAW_MODES.COLLECTOR) pass = TAW_NAMES[name].includes(TAW_BOOKS[tawCollectorIndex]);
+    else if (tawCurrentMode === TAW_MODES.ALPHABET) pass = name.charAt(0) === ALPHABET[tawAlphabetIndex].toLowerCase();
+    else if (tawCurrentMode === TAW_MODES.TIMEATTACK) pass = true;
+    if (!pass) { tawToast('Letter constraint violation'); tawAddStrike(); return; }
+    tawCommitEntry(name);
+    tawToast(name.toUpperCase());
   }
 
   function tawUseSkip() {
